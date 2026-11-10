@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
+import { Loader2, Pencil, UserPlus } from "lucide-react";
+import { saveUser } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { saveUser } from "@/app/actions";
-import { Edit, UserPlus } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface User {
   id: number;
@@ -17,73 +18,85 @@ interface User {
 export function UserModal({ user }: { user?: User }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState(user?.name || "");
-  const [pin, setPin] = useState(user?.pin || "");
+  const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pin.length < 4) return alert("El PIN debe tener al menos 4 números.");
-    
+    if (pin.length !== 4) return toast.error("El PIN debe tener 4 números");
     setLoading(true);
-    try {
-      await saveUser(user?.id || null, name, pin);
-      setOpen(false);
-      if (!user) {
-        setName("");
-        setPin("");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Error al guardar. Tal vez ese PIN ya lo tiene otro mesero.");
-    } finally {
-      setLoading(false);
-    }
+    const res = await saveUser(user?.id ?? null, name, pin);
+    setLoading(false);
+    if (!res.success) return toast.error(res.error);
+    toast.success(user ? "Datos actualizados" : "Persona registrada");
+    setOpen(false);
   };
 
+  const randomPin = () => setPin(String(Math.floor(1000 + Math.random() * 9000)));
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (v) {
+          setName(user?.name ?? "");
+          setPin(user?.pin ?? "");
+        }
+        setOpen(v);
+      }}
+    >
       <DialogTrigger asChild>
         {user ? (
-          <Button variant="outline" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-            <Edit size={16} />
+          <Button variant="ghost" size="icon" className="size-10 rounded-xl" aria-label={`Editar ${user.name}`}>
+            <Pencil className="size-4" />
           </Button>
         ) : (
-          <Button className="bg-slate-900 text-white hover:bg-slate-800 shadow-md">
-            <UserPlus className="mr-2 h-5 w-5" /> Nuevo Mesero
+          <Button className="h-11 rounded-xl">
+            <UserPlus /> Agregar persona
           </Button>
         )}
       </DialogTrigger>
-      
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle className="font-black italic uppercase text-xl">
-            {user ? "Editar Mesero" : "Registrar Personal"}
-          </DialogTitle>
-        </DialogHeader>
-        
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">Nombre del Mesero/a</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Carlos Mendoza" required className="h-12 font-medium" />
-          </div>
 
+      <DialogContent className="sm:max-w-sm rounded-3xl">
+        <DialogHeader>
+          <DialogTitle>{user ? "Editar persona" : "Nueva persona"}</DialogTitle>
+          <DialogDescription>Con este PIN entra a tomar pedidos y cobrar.</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="space-y-5">
           <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">PIN de Acceso (4 dígitos)</Label>
-            <Input 
-              type="text" 
-              maxLength={4} 
-              pattern="\d{4}" // Solo permite 4 números exactos
-              title="Debe ser un PIN de 4 números"
-              value={pin} 
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} // Evita letras
-              placeholder="1234" 
-              required 
-              className="h-16 font-black text-center tracking-[1em] text-2xl" 
+            <Label htmlFor="u-name">Nombre</Label>
+            <Input
+              id="u-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej. Carlos Mendoza"
+              required
+              autoFocus
+              className="h-12 rounded-xl"
             />
           </div>
-          
-          <Button type="submit" className="w-full h-12 font-black tracking-widest uppercase bg-blue-600 hover:bg-blue-700 mt-4" disabled={loading}>
-            {loading ? "Guardando..." : "Guardar Registro"}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="u-pin">PIN de 4 dígitos</Label>
+              <button type="button" onClick={randomPin} className="text-sm font-medium text-primary">
+                Generar
+              </button>
+            </div>
+            <Input
+              id="u-pin"
+              inputMode="numeric"
+              maxLength={4}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="••••"
+              required
+              className="h-14 rounded-xl text-center text-2xl font-semibold tracking-[0.6em] tabular"
+            />
+          </div>
+          <Button type="submit" className="w-full h-12 rounded-xl text-base" disabled={loading}>
+            {loading && <Loader2 className="animate-spin" />}
+            Guardar
           </Button>
         </form>
       </DialogContent>

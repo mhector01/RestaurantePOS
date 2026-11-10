@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
+import { Loader2, Pencil, Plus } from "lucide-react";
+import { createCategory, saveProduct } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { saveProduct, createCategory } from "@/app/actions";
-import { Edit, PlusCircle, Plus, X, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { BUSINESS } from "@/lib/config";
+import { cn } from "@/lib/utils";
 
 interface Category {
   id: number;
   name: string;
 }
-
 interface Product {
   id: number;
   name: string;
@@ -20,134 +22,175 @@ interface Product {
   categoryId: number;
 }
 
-interface Props {
-  product?: Product; 
-  categories: Category[]; // Ahora recibimos las categorías disponibles
-}
-
-export function ProductModal({ product, categories }: Props) {
+export function ProductModal({
+  product,
+  categories,
+  defaultCategoryId,
+  compact = false,
+}: {
+  product?: Product;
+  categories: Category[];
+  defaultCategoryId?: number;
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  
-  // Estados del producto
-  const [name, setName] = useState(product?.name || "");
-  const [price, setPrice] = useState(product?.price.toString() || "");
-  const [categoryId, setCategoryId] = useState(product?.categoryId.toString() || "");
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [localCats, setLocalCats] = useState<Category[]>(categories);
+  const [newCat, setNewCat] = useState("");
+  const [creatingCat, setCreatingCat] = useState(false);
 
-  // Estados para crear categoría rápida
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [savingCategory, setSavingCategory] = useState(false);
-
-  // Manejar creación rápida de categoría
-  const handleCreateCategory = async () => {
-    if (!newCategoryName.trim()) return;
-    setSavingCategory(true);
-    try {
-      const cat = await createCategory(newCategoryName);
-      categories.push(cat); // Lo agregamos localmente para evitar recargar de golpe
-      setCategoryId(cat.id.toString()); // La seleccionamos
-      setIsCreatingCategory(false);
-      setNewCategoryName("");
-    } catch (error) {
-      console.error(error);
-      alert("Error al crear categoría. Quizás ya existe.");
-    } finally {
-      setSavingCategory(false);
-    }
+  const reset = () => {
+    setName(product?.name ?? "");
+    setPrice(product ? String(product.price) : "");
+    setCategoryId(product?.categoryId ?? defaultCategoryId ?? categories[0]?.id ?? null);
+    setLocalCats(categories);
+    setNewCat("");
+    setCreatingCat(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const addCategory = async () => {
+    if (!newCat.trim()) return;
+    const cat = await createCategory(newCat);
+    setLocalCats((c) => (c.some((x) => x.id === cat.id) ? c : [...c, cat]));
+    setCategoryId(cat.id);
+    setNewCat("");
+    setCreatingCat(false);
+  };
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!categoryId) return alert("Selecciona una categoría");
-    
+    const value = parseFloat(price);
+    if (!categoryId) return toast.error("Elige una categoría");
+    if (Number.isNaN(value) || value < 0) return toast.error("Precio no válido");
     setLoading(true);
     try {
-      await saveProduct(product?.id || null, name, parseFloat(price), parseInt(categoryId));
+      await saveProduct(product?.id ?? null, name, value, categoryId);
+      toast.success(product ? "Producto actualizado" : "Producto agregado");
       setOpen(false);
-      if (!product) {
-        setName("");
-        setPrice("");
-        setCategoryId("");
-      }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      toast.error("No se pudo guardar");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(val) => {
-      setOpen(val);
-      if (!val) setIsCreatingCategory(false);
-    }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (v) reset();
+        setOpen(v);
+      }}
+    >
       <DialogTrigger asChild>
         {product ? (
-          <Button variant="outline" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-            <Edit size={16} />
+          <Button variant="ghost" size="icon" className="size-10 rounded-xl" aria-label={`Editar ${product.name}`}>
+            <Pencil className="size-4" />
+          </Button>
+        ) : compact ? (
+          <Button variant="ghost" size="sm" className="h-10 rounded-xl text-primary hover:text-primary">
+            <Plus /> Agregar
           </Button>
         ) : (
-          <Button className="bg-slate-900 text-white hover:bg-slate-800 shadow-md">
-            <PlusCircle className="mr-2 h-5 w-5" /> Nuevo Producto
+          <Button className="h-11 rounded-xl">
+            <Plus /> Nuevo producto
           </Button>
         )}
       </DialogTrigger>
-      
-      <DialogContent className="sm:max-w-[425px]">
+
+      <DialogContent className="sm:max-w-md rounded-3xl">
         <DialogHeader>
-          <DialogTitle className="font-black italic uppercase text-xl">
-            {product ? "Editar Producto" : "Agregar Producto"}
-          </DialogTitle>
+          <DialogTitle>{product ? "Editar producto" : "Nuevo producto"}</DialogTitle>
+          <DialogDescription>Así aparecerá en el menú de los meseros.</DialogDescription>
         </DialogHeader>
-        
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+
+        <form onSubmit={submit} className="space-y-5">
           <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">Nombre del Plato/Bebida</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Hamburguesa Doble" required className="h-12 font-medium" />
+            <Label htmlFor="p-name">Nombre</Label>
+            <Input
+              id="p-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej. Hamburguesa doble"
+              required
+              autoFocus
+              className="h-12 rounded-xl"
+            />
           </div>
 
-          {/* SELECTOR O CREADOR DE CATEGORÍA */}
           <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">Categoría</Label>
-            
-            {isCreatingCategory ? (
-              <div className="flex gap-2">
-                <Input autoFocus value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Nueva Categoría..." className="h-12" />
-                <Button type="button" onClick={handleCreateCategory} disabled={savingCategory} className="h-12 w-12 bg-green-600 hover:bg-green-700 text-white">
-                  {savingCategory ? <Loader2 className="animate-spin h-5 w-5" /> : <Plus className="h-5 w-5" />}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setIsCreatingCategory(false)} className="h-12 w-12">
-                  <X className="h-5 w-5 text-red-500" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <select 
-                  value={categoryId} 
-                  onChange={(e) => setCategoryId(e.target.value)} 
-                  required 
-                  className="flex flex-1 h-12 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-950"
+            <Label htmlFor="p-price">Precio</Label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">{BUSINESS.currency}</span>
+              <Input
+                id="p-price"
+                inputMode="decimal"
+                value={price}
+                onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))}
+                placeholder="0.00"
+                required
+                className="h-12 rounded-xl pl-9 text-lg font-semibold tabular"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Categoría</Label>
+            <div className="flex flex-wrap gap-2">
+              {localCats.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCategoryId(c.id)}
+                  className={cn(
+                    "h-10 px-4 rounded-full border text-sm font-medium transition-colors",
+                    categoryId === c.id ? "bg-foreground text-background border-foreground" : "hover:bg-muted"
+                  )}
                 >
-                  <option value="" disabled>Selecciona...</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-                <Button type="button" onClick={() => setIsCreatingCategory(true)} variant="outline" className="h-12 px-3 border-dashed border-2 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50">
-                  <Plus className="h-5 w-5 mr-1" /> Nueva
+                  {c.name}
+                </button>
+              ))}
+              {!creatingCat && (
+                <button
+                  type="button"
+                  onClick={() => setCreatingCat(true)}
+                  className="h-10 px-4 rounded-full border border-dashed text-sm font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 inline-flex items-center gap-1"
+                >
+                  <Plus className="size-4" /> Nueva
+                </button>
+              )}
+            </div>
+            {creatingCat && (
+              <div className="flex gap-2 pt-1">
+                <Input
+                  autoFocus
+                  value={newCat}
+                  onChange={(e) => setNewCat(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCategory();
+                    }
+                  }}
+                  placeholder="Nombre de la categoría"
+                  className="h-11 rounded-xl"
+                />
+                <Button type="button" className="h-11 rounded-xl" onClick={addCategory}>
+                  Crear
+                </Button>
+                <Button type="button" variant="ghost" className="h-11 rounded-xl" onClick={() => setCreatingCat(false)}>
+                  Cancelar
                 </Button>
               </div>
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">Precio ($)</Label>
-            <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" required className="h-12 font-black text-lg" />
-          </div>
-          
-          <Button type="submit" className="w-full h-12 font-black tracking-widest uppercase bg-blue-600 hover:bg-blue-700 mt-4" disabled={loading || isCreatingCategory}>
-            {loading ? "Guardando..." : "Guardar Producto"}
+          <Button type="submit" className="w-full h-12 rounded-xl text-base" disabled={loading || creatingCat}>
+            {loading && <Loader2 className="animate-spin" />}
+            {product ? "Guardar cambios" : "Agregar al menú"}
           </Button>
         </form>
       </DialogContent>

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Loader2, LockKeyhole } from "lucide-react";
+import { loginAdmin } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { loginAdmin } from "@/app/actions";
-import { LockKeyhole, ArrowLeft } from "lucide-react";
-import Link from "next/link";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -15,11 +15,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    
-    const formData = new FormData(e.currentTarget);
-    const result = await loginAdmin(formData);
-    
-    // Si la función devuelve algo, es porque hubo un error (contraseña incorrecta)
+    const result = await loginAdmin(new FormData(e.currentTarget));
     if (result?.error) {
       setError(result.error);
       setLoading(false);
@@ -27,45 +23,39 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
-      <div className="absolute top-8 left-8">
-        <Link href="/">
-          <Button variant="ghost" className="text-slate-400 hover:text-white hover:bg-slate-800">
-            <ArrowLeft className="mr-2 h-5 w-5" /> Volver al POS
-          </Button>
-        </Link>
-      </div>
+    <div className="min-h-dvh bg-stone-950 flex flex-col p-4">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-2 text-stone-400 hover:text-white text-sm font-medium h-11 px-2 self-start"
+      >
+        <ArrowLeft className="size-5" /> Volver al punto de venta
+      </Link>
 
-      <div className="bg-white p-10 rounded-[2rem] shadow-2xl w-full max-w-md text-center">
-        <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-          <LockKeyhole className="h-10 w-10 text-blue-600" />
-        </div>
-        
-        <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic mb-2">Acceso Admin</h1>
-        <p className="text-slate-500 font-bold tracking-widest text-xs uppercase mb-8">
-          Ingresa tu PIN de seguridad
-        </p>
+      <div className="flex-1 flex items-center justify-center pb-10">
+        <div className="bg-card w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+          <span className="size-14 rounded-2xl bg-accent text-primary grid place-items-center mb-5">
+            <LockKeyhole className="size-7" />
+          </span>
+          <h1 className="text-2xl font-semibold">Administración</h1>
+          <p className="text-muted-foreground mt-1">Ingresa la contraseña del administrador.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <Input 
-              type="password" 
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <Input
+              type="password"
               name="password"
-              placeholder="•••••" 
+              placeholder="Contraseña"
               required
-              className="h-16 text-center text-3xl font-black tracking-[0.5em] bg-slate-50 border-2 border-slate-200 focus:border-blue-500 rounded-2xl"
+              autoFocus
+              aria-invalid={!!error}
+              className="h-12 rounded-xl text-lg"
             />
-            {error && <p className="text-red-500 text-sm font-bold mt-2">{error}</p>}
-          </div>
-
-          <Button 
-            type="submit" 
-            disabled={loading}
-            className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest rounded-xl text-lg transition-all active:scale-95"
-          >
-            {loading ? "Verificando..." : "Desbloquear"}
-          </Button>
-        </form>
+            {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+            <Button type="submit" disabled={loading} className="w-full h-12 rounded-xl text-base">
+              {loading && <Loader2 className="animate-spin" />}
+              Entrar
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );

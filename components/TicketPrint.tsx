@@ -1,98 +1,86 @@
 "use client";
 
-import { Button } from "./ui/button";
-import { Printer } from "lucide-react";
+import { createPortal } from "react-dom";
+import { BUSINESS, PAYMENT_LABEL, formatMoney } from "@/lib/config";
 
-interface Props {
-  payment: any;
+export interface TicketPayment {
+  id: number;
+  amount: number;
+  method: string;
+  createdAt: string | Date;
+  order: {
+    table: { number: number };
+    items: { id: number; quantity: number; price: number; product: { name: string } }[];
+  };
 }
 
-export function TicketPrint({ payment }: Props) {
-  const handlePrint = () => {
-    window.print();
-  };
+/**
+ * Ticket de 80 mm. No se ve en pantalla; solo aparece al imprimir (window.print()).
+ */
+export function TicketPrint({
+  payment,
+  received,
+  change,
+}: {
+  payment: TicketPayment;
+  received?: number;
+  change?: number;
+}) {
+  // Se monta directo en <body> para que la impresión no herede posiciones del diálogo.
+  // Solo se renderiza tras un cobro (en el navegador), nunca en el servidor.
+  if (typeof document === "undefined") return null;
 
-  if (!payment || !payment.order) return null;
-
-  return (
-    <div className="mt-4">
-      <Button 
-        onClick={handlePrint} 
-        variant="outline" 
-        className="w-full gap-2 font-bold border-2 border-slate-200 hover:bg-slate-50"
-      >
-        <Printer size={16} /> Imprimir Comprobante
-      </Button>
-
-      {/* ÁREA DE IMPRESIÓN (Invisible en web, visible en Ctrl+P) */}
-      <div className="hidden print:block fixed inset-0 bg-white p-6 text-black font-mono text-sm leading-tight w-[80mm] mx-auto">
-        <div className="text-center border-b border-dashed border-black pb-3 mb-3">
-          <h2 className="text-xl font-black uppercase italic tracking-tighter">POS RESTAURANTE</h2>
-          <p className="text-[10px]">DIRECCIÓN COMERCIAL 123</p>
-          <p className="text-[10px]">CIUDAD - PAÍS</p>
-          <p className="text-[10px]">NIT: 900.123.456-1</p>
-        </div>
-
-        <div className="mb-3 text-[10px] space-y-1">
-          <p>FECHA: {new Date(payment.createdAt).toLocaleString()}</p>
-          <p>MESA: {payment.order.table.number}</p>
-          <p>COMPROBANTE: #{payment.id}</p>
-        </div>
-
-        <table className="w-full mb-3 border-b border-dashed border-black">
-          <thead>
-            <tr className="text-left text-[10px]">
-              <th className="pb-2">CANT</th>
-              <th className="pb-2">DESCRIPCIÓN</th>
-              <th className="pb-2 text-right">TOTAL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {payment.order.items.map((item: any) => (
-              // Usamos item.id como KEY única
-              <tr key={item.id} className="text-[11px]">
-                <td className="py-1 align-top font-bold">{item.quantity}</td>
-                <td className="py-1 uppercase px-1">{item.product.name}</td>
-                <td className="py-1 text-right align-top font-bold">
-                  ${(item.price * item.quantity).toFixed(2)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="pt-2">
-          <div className="flex justify-between items-center text-xs font-black">
-             <span>TOTAL PAGADO:</span>
-             <span className="text-lg">${payment.amount.toFixed(2)}</span>
-          </div>
-          <p className="text-[9px] mt-2 text-right italic font-medium">MÉTODO: {payment.method}</p>
-        </div>
-
-        <div className="text-center mt-10 pt-4 border-t border-dashed border-black space-y-1">
-          <p className="text-[10px] font-black italic">¡GRACIAS POR PREFERIRNOS!</p>
-          <p className="text-[8px]">ESTO NO ES UNA FACTURA LEGAL</p>
-        </div>
+  const mesa = payment.order.table.number;
+  return createPortal(
+    <div className="print-area hidden print:block bg-white text-black font-mono text-[11px] leading-snug">
+      <div className="text-center pb-2 mb-2 border-b border-dashed border-black">
+        <p className="text-sm font-bold uppercase">{BUSINESS.name}</p>
+        <p>{BUSINESS.address}</p>
+        {BUSINESS.taxId && <p>RTN/NIT: {BUSINESS.taxId}</p>}
       </div>
 
-      <style jsx global>{`
-        @media print {
-          /* Ocultar todo el sitio web al imprimir */
-          body * {
-            visibility: hidden;
-          }
-          /* Mostrar solo nuestro ticket */
-          .print\:block, .print\:block * {
-            visibility: visible;
-          }
-          .print\:block {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-          }
-        }
-      `}</style>
-    </div>
+      <div className="mb-2 space-y-0.5">
+        <p>Fecha: {new Date(payment.createdAt).toLocaleString("es")}</p>
+        <p>{mesa === 0 ? "Para llevar" : `Mesa ${mesa}`}</p>
+        <p>Comprobante #{payment.id}</p>
+      </div>
+
+      <table className="w-full mb-2 border-b border-dashed border-black">
+        <thead>
+          <tr className="text-left">
+            <th className="pb-1 w-8">Cant</th>
+            <th className="pb-1">Descripción</th>
+            <th className="pb-1 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payment.order.items.map((item) => (
+            <tr key={item.id}>
+              <td className="py-0.5 align-top">{item.quantity}</td>
+              <td className="py-0.5 pr-1">{item.product.name}</td>
+              <td className="py-0.5 text-right align-top">{formatMoney(item.price * item.quantity)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="flex justify-between font-bold text-sm">
+        <span>TOTAL</span>
+        <span>{formatMoney(payment.amount)}</span>
+      </div>
+      <p className="mt-1">Pago: {PAYMENT_LABEL[payment.method] ?? payment.method}</p>
+      {received !== undefined && received > 0 && (
+        <>
+          <p>Recibido: {formatMoney(received)}</p>
+          <p>Cambio: {formatMoney(change ?? 0)}</p>
+        </>
+      )}
+
+      <div className="text-center mt-4 pt-2 border-t border-dashed border-black">
+        <p className="font-bold">¡Gracias por su visita!</p>
+        <p className="text-[9px]">Este documento no es una factura</p>
+      </div>
+    </div>,
+    document.body
   );
 }

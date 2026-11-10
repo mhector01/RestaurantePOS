@@ -1,40 +1,40 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Printer, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Lock, Printer } from "lucide-react";
 import { closeRegister } from "@/app/actions";
+import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/pos/ConfirmAction";
 
-export function PrintAndCloseButton({ hasSales }: { hasSales: boolean }) {
-  const [loading, setLoading] = useState(false);
-
-  const handleClose = async () => {
-    const confirmacion = window.confirm(
-      "¿Imprimir reporte y cerrar el turno? La caja volverá a $0.00"
-    );
-    
-    if (!confirmacion) return;
-
-    // 1. Abrimos el diálogo de impresión (imprime el ticket oculto)
-    window.print();
-
-    // 2. Cerramos la caja en la base de datos
-    setLoading(true);
-    await closeRegister();
-    setLoading(false);
-  };
-
-  // Si no hay ventas, no mostramos el botón
-  if (!hasSales) return null;
+export function PrintAndCloseButton({ hasSales, openAccounts }: { hasSales: boolean; openAccounts: number }) {
+  const router = useRouter();
 
   return (
-    <Button 
-      onClick={handleClose} 
-      disabled={loading} 
-      className="bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest h-12 px-6 rounded-xl shadow-lg print:hidden"
-    >
-      {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Printer className="mr-2 h-5 w-5" />}
-      Imprimir y Cerrar Caja
-    </Button>
+    <>
+      <Button variant="outline" className="h-11 rounded-xl" onClick={() => window.print()} disabled={!hasSales}>
+        <Printer /> Imprimir reporte
+      </Button>
+      <ConfirmAction
+        title="¿Cerrar el turno?"
+        description={
+          (openAccounts > 0
+            ? `Ojo: hay ${openAccounts} cuenta(s) abierta(s); sus cobros pasarán al siguiente turno. `
+            : "") +
+          "Se imprimirá el corte y el contador del turno volverá a cero. Esta acción no se puede deshacer."
+        }
+        confirmLabel="Imprimir y cerrar"
+        destructive={false}
+        successMessage="Turno cerrado"
+        action={async () => {
+          window.print();
+          await closeRegister();
+          router.refresh();
+        }}
+      >
+        <Button className="h-11 rounded-xl" disabled={!hasSales}>
+          <Lock /> Cerrar turno
+        </Button>
+      </ConfirmAction>
+    </>
   );
 }
