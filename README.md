@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# POS Restaurante
 
-## Getting Started
+Punto de venta para restaurantes: mesas, comandas, cobro (total o dividido, efectivo/tarjeta), tickets y panel de administración.
 
-First, run the development server:
+Stack: Next.js 16 · React 19 · Prisma 7 · PostgreSQL · Tailwind v4.
+
+## Desarrollo local
 
 ```bash
+cp .env.example .env   # y ajusta DATABASE_URL
+npm install
+npx prisma migrate deploy
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre http://localhost:3000. En desarrollo, si no defines `ADMIN_PASSWORD`, la contraseña del panel es `12345`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Variables de entorno
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Obligatoria | Descripción |
+| --- | --- | --- |
+| `DATABASE_URL` | Sí | Conexión a PostgreSQL. |
+| `ADMIN_PASSWORD` | Sí (producción) | Contraseña del panel `/admin`. Sin ella no se puede entrar al panel en producción. |
+| `SESSION_SECRET` | Recomendada | Cadena larga y aleatoria para firmar la sesión de admin. |
+| `TZ` | No | Zona horaria para "ventas de hoy" y horas del ticket. Por defecto `America/Tegucigalpa`. |
+| `NEXT_PUBLIC_BUSINESS_NAME` | No | Nombre del negocio (ticket y título). **Build variable.** |
+| `NEXT_PUBLIC_BUSINESS_ADDRESS` | No | Dirección en el ticket. **Build variable.** |
+| `NEXT_PUBLIC_BUSINESS_TAX_ID` | No | RTN / RFC / NIT en el ticket. **Build variable.** |
+| `NEXT_PUBLIC_CURRENCY_SYMBOL` | No | Símbolo de moneda, p. ej. `L` o `$`. **Build variable.** |
+| `NEXT_PUBLIC_LOCALE` | No | Formato de números, p. ej. `es-HN`. **Build variable.** |
 
-## Learn More
+Las `NEXT_PUBLIC_*` se incrustan al compilar: si las cambias hay que volver a desplegar.
 
-To learn more about Next.js, take a look at the following resources:
+## Despliegue en Coolify
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Base de datos:** en el proyecto, *+ New → Database → PostgreSQL*. Copia su URL interna (*Postgres URL (internal)*).
+2. **Aplicación:** *+ New → Application* desde el repositorio de GitHub, rama `main`, **Build Pack: Dockerfile**. Puerto expuesto: `3000`.
+3. **Variables:** agrega `DATABASE_URL` (la URL interna del paso 1), `ADMIN_PASSWORD`, `SESSION_SECRET` y, si quieres, las `NEXT_PUBLIC_*` marcadas como *Build Variable*.
+4. **Dominio:** asígnale un dominio con HTTPS (Coolify genera el certificado).
+5. **Deploy.** Al arrancar, el contenedor aplica las migraciones pendientes (`prisma migrate deploy`) y luego inicia el servidor.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+La base empieza vacía: entra a `/admin` y crea mesas, categorías, productos y meseros.

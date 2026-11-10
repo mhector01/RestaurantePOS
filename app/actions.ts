@@ -4,6 +4,15 @@ import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { ADMIN_COOKIE, adminToken, getAdminPassword, isValidAdminToken } from "@/lib/auth";
+
+/** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
+async function requireAdmin() {
+  const cookieStore = await cookies();
+  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value))) {
+    throw new Error("No autorizado");
+  }
+}
 
 function refreshTable(mesaId: number) {
   revalidatePath(`/mesa/${mesaId}`);
@@ -212,6 +221,7 @@ export async function getPaymentTicket(paymentId: number) {
 }
 
 export async function getDailySales() {
+  await requireAdmin();
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
 
@@ -233,6 +243,7 @@ export async function getDailySales() {
 // ---------------------------------------------------------------------------
 
 export async function deleteProduct(id: number) {
+  await requireAdmin();
   try {
     await prisma.product.delete({ where: { id } });
     revalidatePath("/admin/productos");
@@ -248,6 +259,7 @@ export async function deleteProduct(id: number) {
 }
 
 export async function createCategory(name: string) {
+  await requireAdmin();
   const clean = name.trim();
   const existing = await prisma.category.findUnique({ where: { name: clean } });
   if (existing) return existing;
@@ -257,6 +269,7 @@ export async function createCategory(name: string) {
 }
 
 export async function deleteCategory(id: number) {
+  await requireAdmin();
   const count = await prisma.product.count({ where: { categoryId: id } });
   if (count > 0) {
     return { success: false, error: "La categoría tiene productos. Muévelos o elimínalos primero." };
@@ -272,6 +285,7 @@ export async function saveProduct(
   price: number,
   categoryId: number
 ) {
+  await requireAdmin();
   const data = { name: name.trim(), price, category: { connect: { id: categoryId } } };
   if (id) {
     await prisma.product.update({ where: { id }, data });
@@ -288,6 +302,7 @@ export async function saveProduct(
 
 /** Agrega N mesas nuevas, numeradas a continuación de la última. */
 export async function addTables(count: number) {
+  await requireAdmin();
   const n = Math.max(1, Math.min(50, Math.floor(count)));
   const last = await prisma.table.findFirst({ orderBy: { number: "desc" } });
   const start = Math.max(1, (last?.number ?? 0) + 1);
@@ -299,6 +314,7 @@ export async function addTables(count: number) {
 }
 
 export async function deleteTable(id: number) {
+  await requireAdmin();
   const table = await prisma.table.findUnique({ where: { id } });
   if (!table) return { success: false, error: "La mesa no existe." };
   if (table.status !== "FREE") {
@@ -326,16 +342,18 @@ export async function enableCounter() {
 // ACCESO ADMINISTRADOR
 // ---------------------------------------------------------------------------
 
-// Puedes cambiar "12345" por el PIN que tú quieras
-const ADMIN_PASSWORD = "12345";
-
 export async function loginAdmin(formData: FormData) {
   const password = formData.get("password");
+  const expected = getAdminPassword();
+  if (!expected) {
+    return { error: "Falta configurar ADMIN_PASSWORD en el servidor." };
+  }
 
-  if (password === ADMIN_PASSWORD) {
+  if (password === expected) {
     const cookieStore = await cookies();
-    cookieStore.set("admin_session", "true", {
+    cookieStore.set(ADMIN_COOKIE, (await adminToken())!, {
       httpOnly: true,
+      sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 8,
     });
@@ -347,7 +365,7 @@ export async function loginAdmin(formData: FormData) {
 
 export async function logoutAdmin() {
   const cookieStore = await cookies();
-  cookieStore.delete("admin_session");
+  cookieStore.delete(ADMIN_COOKIE);
   redirect("/");
 }
 
@@ -356,6 +374,7 @@ export async function logoutAdmin() {
 // ---------------------------------------------------------------------------
 
 export async function saveUser(id: number | null, name: string, pin: string) {
+  await requireAdmin();
   const clash = await prisma.user.findUnique({ where: { pin } });
   if (clash && clash.id !== id) {
     return { success: false, error: "Ese PIN ya lo usa otra persona." };
@@ -370,6 +389,7 @@ export async function saveUser(id: number | null, name: string, pin: string) {
 }
 
 export async function deleteUser(id: number) {
+  await requireAdmin();
   try {
     await prisma.user.delete({ where: { id } });
     revalidatePath("/admin/usuarios");
@@ -407,6 +427,7 @@ export async function logoutWaiter() {
 
 // --- CIERRE DE CAJA ---
 export async function closeRegister() {
+  await requireAdmin();
   await prisma.order.updateMany({
     where: { status: "PAID" },
     data: { status: "CLOSED" },
