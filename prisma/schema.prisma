@@ -9,11 +9,29 @@ datasource db {
 
 // Nuestras tablas
 
+// Salas del local (Salón principal, Terraza…)
+model Area {
+  id        Int      @id @default(autoincrement())
+  name      String
+  position  Int      @default(0)
+  tables    Table[]
+  createdAt DateTime @default(now())
+}
+
 model Table {
   id        Int      @id @default(autoincrement())
   number    Int      @unique
   status    String   @default("FREE") // FREE o OCCUPIED
   orders    Order[]
+
+  // Plano: sala, forma, puestos y posición en la cuadrícula (null = acomodo automático)
+  areaId    Int?
+  area      Area?    @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  shape     String   @default("square") // square | round | rect
+  seats     Int      @default(4)
+  x         Int?
+  y         Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

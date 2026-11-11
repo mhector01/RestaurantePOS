@@ -143,9 +143,9 @@ function Kpi({
   highlight?: boolean;
 }) {
   return (
-    <div className={highlight ? "rounded-2xl p-4 sm:p-5 bg-foreground text-background" : "rounded-2xl p-4 sm:p-5 bg-card border"}>
+    <div className={highlight ? "rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-primary to-orange-700 text-primary-foreground shadow-lg shadow-primary/20" : "rounded-2xl p-4 sm:p-5 bg-card border"}>
       <div className="flex items-center justify-between">
-        <p className={highlight ? "text-sm text-background/70" : "text-sm text-muted-foreground"}>{label}</p>
+        <p className={highlight ? "text-sm text-white/80" : "text-sm text-muted-foreground"}>{label}</p>
         <Icon className={highlight ? "size-4 text-primary" : "size-4 text-muted-foreground"} />
       </div>
       <p className="text-xl sm:text-3xl font-semibold tabular mt-2 truncate">{value}</p>

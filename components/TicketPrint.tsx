@@ -79,6 +79,7 @@ export function TicketPrint({
       <div className="text-center mt-4 pt-2 border-t border-dashed border-black">
         <p className="font-bold">¡Gracias por su visita!</p>
         <p className="text-[9px]">Este documento no es una factura</p>
+        <p className="text-[9px] mt-1">Ristemo · Sistema para restaurantes</p>
       </div>
     </div>,
     document.body

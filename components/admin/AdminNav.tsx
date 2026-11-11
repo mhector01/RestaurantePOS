@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { Armchair, ChefHat, LayoutDashboard, LogOut, Store, UsersRound, UtensilsCrossed, Wallet } from "lucide-react";
 import { logoutAdmin } from "@/app/actions";
 import { cn } from "@/lib/utils";
+import { BrandLogo, BrandMark } from "@/components/Brand";
 
 const NAV = [
   { href: "/admin", label: "Resumen", Icon: LayoutDashboard },
   { href: "/admin/reportes", label: "Caja", Icon: Wallet },
   { href: "/admin/productos", label: "Menú", Icon: UtensilsCrossed },
-  { href: "/admin/mesas", label: "Mesas", Icon: Armchair },
+  { href: "/admin/mesas", label: "Plano", Icon: Armchair },
   { href: "/admin/usuarios", label: "Personal", Icon: UsersRound },
 ];
 
@@ -24,14 +25,11 @@ export function AdminSidebar({ business }: { business: string }) {
   const isActive = useActive();
   return (
     <aside className="hidden md:flex w-60 lg:w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground h-dvh sticky top-0">
-      <div className="h-16 px-5 flex items-center gap-3 border-b border-sidebar-border">
-        <span className="size-9 rounded-xl bg-primary text-primary-foreground grid place-items-center">
-          <UtensilsCrossed className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="font-semibold leading-tight truncate">{business}</p>
-          <p className="text-xs text-sidebar-foreground/60">Administración</p>
-        </div>
+      <div className="px-5 pt-5 pb-4 border-b border-sidebar-border">
+        <BrandLogo className="h-11" priority />
+        <p className="mt-3 text-xs text-sidebar-foreground/60 truncate">
+          Administración · <span className="text-sidebar-foreground font-medium">{business}</span>
+        </p>
       </div>
 
       <nav className="flex-1 p-3 space-y-1">
@@ -84,9 +82,7 @@ export function AdminMobileNav({ business }: { business: string }) {
   return (
     <>
       <header className="md:hidden sticky top-0 z-20 h-14 bg-sidebar text-sidebar-foreground flex items-center gap-3 px-4">
-        <span className="size-8 rounded-lg bg-primary text-primary-foreground grid place-items-center">
-          <UtensilsCrossed className="size-4" />
-        </span>
+        <BrandMark className="h-8" />
         <p className="font-semibold flex-1 truncate">{business}</p>
         <Link href="/" aria-label="Ir al punto de venta" className="size-10 grid place-items-center rounded-full hover:bg-white/10">
           <Store className="size-5" />

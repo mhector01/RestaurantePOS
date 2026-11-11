@@ -147,7 +147,7 @@ export function ProductModal({
                   onClick={() => setCategoryId(c.id)}
                   className={cn(
                     "h-10 px-4 rounded-full border text-sm font-medium transition-colors",
-                    categoryId === c.id ? "bg-foreground text-background border-foreground" : "hover:bg-muted"
+                    categoryId === c.id ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
                   )}
                 >
                   {c.name}

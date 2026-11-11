@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { ChefHat, Settings, UtensilsCrossed } from "lucide-react";
+import { ChefHat, Settings } from "lucide-react";
+import { BrandHeader } from "@/components/Brand";
 import prisma from "@/lib/prisma";
+import { normalizeShape } from "@/lib/floor";
 import { BUSINESS } from "@/lib/config";
 import { FloorPlan, type FloorTable } from "@/components/pos/FloorPlan";
 import { WaiterChip } from "@/components/pos/WaiterChip";
@@ -22,6 +24,8 @@ export default async function Home() {
   });
   const readyByTable = new Map<number, number>();
   for (const r of readyRows) readyByTable.set(r.order.tableId, (readyByTable.get(r.order.tableId) ?? 0) + r.quantity);
+
+  const areas = await prisma.area.findMany({ orderBy: [{ position: "asc" }, { id: "asc" }] });
 
   const tables = await prisma.table.findMany({
     orderBy: { number: "asc" },
@@ -47,6 +51,11 @@ export default async function Home() {
       openedAt: order ? order.createdAt.toISOString() : null,
       waiter: order?.user?.name ?? null,
       ready: readyByTable.get(t.id) ?? 0,
+      shape: normalizeShape(t.shape),
+      seats: t.seats,
+      x: t.x,
+      y: t.y,
+      areaId: t.areaId,
     };
   });
 
@@ -58,19 +67,15 @@ export default async function Home() {
       <AutoRefresh seconds={15} />
       <header className="sticky top-0 z-20 bg-background/85 backdrop-blur border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
-          <span className="size-10 rounded-xl bg-primary text-primary-foreground grid place-items-center">
-            <UtensilsCrossed className="size-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold leading-tight truncate">{BUSINESS.name}</p>
-            <p className="text-xs text-muted-foreground">Punto de venta</p>
+          <div className="flex-1 min-w-0">
+            <BrandHeader business={BUSINESS.name} subtitle="Punto de venta" />
           </div>
-          <WaiterChip name={waiter?.name ?? null} />
+          <WaiterChip name={waiter?.name ?? null} dark />
           <Link
             href="/cocina"
             aria-label="Pantalla de cocina"
             title="Pantalla de cocina"
-            className="size-11 rounded-full border bg-card grid place-items-center text-muted-foreground hover:text-foreground transition-colors"
+            className="size-11 rounded-full border border-white/10 bg-white/5 grid place-items-center text-ink-300 hover:text-white hover:bg-white/10 transition-colors"
           >
             <ChefHat className="size-5" />
           </Link>
@@ -78,7 +83,7 @@ export default async function Home() {
             href="/admin"
             aria-label="Panel de administración"
             title="Panel de administración"
-            className="size-11 rounded-full border bg-card grid place-items-center text-muted-foreground hover:text-foreground transition-colors"
+            className="size-11 rounded-full border border-white/10 bg-white/5 grid place-items-center text-ink-300 hover:text-white hover:bg-white/10 transition-colors"
           >
             <Settings className="size-5" />
           </Link>
@@ -86,7 +91,7 @@ export default async function Home() {
       </header>
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
-        <FloorPlan tables={dining} counter={counter} />
+        <FloorPlan tables={dining} counter={counter} areas={areas.map((a) => ({ id: a.id, name: a.name }))} />
       </main>
     </div>
   );

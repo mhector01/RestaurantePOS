@@ -52,7 +52,7 @@ export function WaiterChip({ name, dark = false }: { name: string | null; dark?:
             title="Cambiar de mesero"
             className={cn(
               "size-9 grid place-items-center rounded-full transition-colors",
-              dark ? "hover:bg-white/10 text-stone-300" : "hover:bg-muted text-muted-foreground"
+              dark ? "hover:bg-white/10 text-ink-300" : "hover:bg-muted text-muted-foreground"
             )}
           >
             <LogOut className="size-4" />

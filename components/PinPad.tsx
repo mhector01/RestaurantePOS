@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Delete, Loader2 } from "lucide-react";
 import { loginWaiter } from "@/app/actions";
+import { BrandLogo } from "@/components/Brand";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -78,7 +79,7 @@ export function PinPad({
   const pad = (
     <div className="w-full max-w-xs mx-auto flex flex-col items-center">
       <h2 className={cn("text-xl font-semibold", variant === "screen" && "text-white text-2xl")}>{title}</h2>
-      <p className={cn("text-sm mt-1", variant === "screen" ? "text-stone-400" : "text-muted-foreground")}>
+      <p className={cn("text-sm mt-1", variant === "screen" ? "text-ink-400" : "text-muted-foreground")}>
         {subtitle}
       </p>
 
@@ -91,7 +92,7 @@ export function PinPad({
               i < pin.length
                 ? "bg-primary scale-110"
                 : variant === "screen"
-                ? "bg-stone-700"
+                ? "bg-ink-700"
                 : "bg-muted-foreground/25",
               error && "bg-destructive"
             )}
@@ -118,7 +119,7 @@ export function PinPad({
             onClick={() => press(n)}
             className={cn(
               keyClass,
-              variant === "screen" ? "bg-stone-800 text-white hover:bg-stone-700" : "bg-muted hover:bg-accent"
+              variant === "screen" ? "bg-ink-800 text-white hover:bg-ink-700" : "bg-muted hover:bg-accent"
             )}
           >
             {n}
@@ -131,7 +132,7 @@ export function PinPad({
           onClick={() => press("0")}
           className={cn(
             keyClass,
-            variant === "screen" ? "bg-stone-800 text-white hover:bg-stone-700" : "bg-muted hover:bg-accent"
+            variant === "screen" ? "bg-ink-800 text-white hover:bg-ink-700" : "bg-muted hover:bg-accent"
           )}
         >
           0
@@ -144,7 +145,7 @@ export function PinPad({
           className={cn(
             keyClass,
             "flex items-center justify-center",
-            variant === "screen" ? "text-stone-300 hover:bg-stone-800" : "text-muted-foreground hover:bg-muted"
+            variant === "screen" ? "text-ink-300 hover:bg-ink-800" : "text-muted-foreground hover:bg-muted"
           )}
         >
           <Delete className="size-7" />
@@ -156,14 +157,17 @@ export function PinPad({
   if (variant === "inline") return pad;
 
   return (
-    <div className="min-h-dvh bg-stone-950 flex flex-col p-4">
+    <div className="min-h-dvh bg-ink-950 flex flex-col p-4">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-stone-400 hover:text-white text-sm font-medium h-11 px-2 self-start"
+        className="inline-flex items-center gap-2 text-ink-400 hover:text-white text-sm font-medium h-11 px-2 self-start"
       >
         <ArrowLeft className="size-5" /> Volver a mesas
       </Link>
-      <div className="flex-1 flex items-center justify-center pb-10">{pad}</div>
+      <div className="flex-1 flex flex-col items-center justify-center gap-8 pb-10">
+        <BrandLogo className="h-12 sm:h-14" priority />
+        {pad}
+      </div>
     </div>
   );
 }

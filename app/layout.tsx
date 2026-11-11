@@ -15,15 +15,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: `${BUSINESS.name} · POS`,
-  description: "Punto de venta para restaurantes",
+  title: `${BUSINESS.name} · Ristemo`,
+  description: "Ristemo — Sistema para restaurantes by IMZA",
+  applicationName: "Ristemo",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#1c1917",
+  themeColor: "#021026",
 };
 
 export default function RootLayout({

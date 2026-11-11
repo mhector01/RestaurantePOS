@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { normalizeShape } from "@/lib/floor";
 import { ADMIN_COOKIE, adminToken, getAdminPassword, isValidAdminToken } from "@/lib/auth";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
@@ -399,8 +400,9 @@ export async function addTables(count: number) {
   const n = Math.max(1, Math.min(50, Math.floor(count)));
   const last = await prisma.table.findFirst({ orderBy: { number: "desc" } });
   const start = Math.max(1, (last?.number ?? 0) + 1);
+  const area = await prisma.area.findFirst({ orderBy: { position: "asc" } });
   for (let i = 0; i < n; i++) {
-    await prisma.table.create({ data: { number: start + i } });
+    await prisma.table.create({ data: { number: start + i, areaId: area?.id ?? null } });
   }
   revalidatePath("/admin/mesas");
   revalidatePath("/");
@@ -420,6 +422,105 @@ export async function deleteTable(id: number) {
   await prisma.table.delete({ where: { id } });
   revalidatePath("/admin/mesas");
   revalidatePath("/");
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// PLANO DEL LOCAL (SALAS Y POSICIÓN DE MESAS)
+// ---------------------------------------------------------------------------
+
+function refreshFloor() {
+  revalidatePath("/admin/mesas");
+  revalidatePath("/");
+}
+
+export async function createArea(name: string) {
+  await requireAdmin();
+  const clean = name.trim().slice(0, 40);
+  if (!clean) return { success: false, error: "Escribe un nombre para la sala." };
+  const last = await prisma.area.findFirst({ orderBy: { position: "desc" } });
+  const area = await prisma.area.create({ data: { name: clean, position: (last?.position ?? 0) + 1 } });
+  refreshFloor();
+  return { success: true, id: area.id };
+}
+
+export async function renameArea(id: number, name: string) {
+  await requireAdmin();
+  const clean = name.trim().slice(0, 40);
+  if (!clean) return { success: false, error: "Escribe un nombre para la sala." };
+  await prisma.area.update({ where: { id }, data: { name: clean } });
+  refreshFloor();
+  return { success: true };
+}
+
+export async function deleteArea(id: number) {
+  await requireAdmin();
+  const count = await prisma.table.count({ where: { areaId: id } });
+  if (count > 0) return { success: false, error: "La sala tiene mesas. Elimínalas o muévelas primero." };
+  await prisma.area.delete({ where: { id } });
+  refreshFloor();
+  return { success: true };
+}
+
+/** Crea una mesa en una sala con la forma elegida, numerada a continuación de la última. */
+export async function addTableToArea(areaId: number, shape: string, seats: number, x: number, y: number) {
+  await requireAdmin();
+  const last = await prisma.table.findFirst({ orderBy: { number: "desc" } });
+  const table = await prisma.table.create({
+    data: {
+      number: Math.max(1, (last?.number ?? 0) + 1),
+      areaId,
+      shape: normalizeShape(shape),
+      seats: Math.max(1, Math.min(20, Math.round(seats))),
+      x: Math.max(0, Math.round(x)),
+      y: Math.max(0, Math.round(y)),
+    },
+  });
+  refreshFloor();
+  return { success: true, id: table.id, number: table.number };
+}
+
+/** Guarda de una vez las posiciones de varias mesas (p. ej. las acomodadas automáticamente). */
+export async function saveLayout(items: { id: number; x: number; y: number }[]) {
+  await requireAdmin();
+  await prisma.$transaction(
+    items.map((i) =>
+      prisma.table.update({
+        where: { id: i.id },
+        data: { x: Math.max(0, Math.round(i.x)), y: Math.max(0, Math.round(i.y)) },
+      })
+    )
+  );
+  refreshFloor();
+}
+
+export async function moveTable(id: number, x: number, y: number) {
+  await requireAdmin();
+  await prisma.table.update({ where: { id }, data: { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) } });
+  refreshFloor();
+}
+
+export async function updateTable(
+  id: number,
+  data: { number?: number; shape?: string; seats?: number; areaId?: number }
+) {
+  await requireAdmin();
+  if (data.number !== undefined) {
+    const n = Math.round(data.number);
+    if (!(n >= 1)) return { success: false, error: "El número de mesa debe ser 1 o más." };
+    const clash = await prisma.table.findUnique({ where: { number: n } });
+    if (clash && clash.id !== id) return { success: false, error: `Ya existe la mesa ${n}.` };
+  }
+  await prisma.table.update({
+    where: { id },
+    data: {
+      number: data.number !== undefined ? Math.round(data.number) : undefined,
+      shape: data.shape !== undefined ? normalizeShape(data.shape) : undefined,
+      seats: data.seats !== undefined ? Math.max(1, Math.min(20, Math.round(data.seats))) : undefined,
+      areaId: data.areaId,
+    },
+  });
+  refreshFloor();
   return { success: true };
 }
 

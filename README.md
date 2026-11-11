@@ -1,10 +1,11 @@
-# POS Restaurante
+# Ristemo — Sistema para restaurantes (by IMZA)
 
 Punto de venta para restaurantes: mesas, comandas, pantalla de cocina, cobro (total o dividido, efectivo/tarjeta), tickets y panel de administración.
 
 ## Pantallas
 
-- `/`: plano de mesas para meseros (entran con su PIN).
+- `/`: plano de mesas en vivo para meseros (entran con su PIN). Cada mesa muestra si está libre, ocupada (con total y tiempo) o con pedido listo en cocina; también hay vista de lista.
+- `/admin/mesas`: editor del plano. Crea salas (Salón, Terraza…), agrega mesas cuadradas, redondas o rectangulares desde la paleta y arrástralas a su lugar.
 - `/cocina`: pantalla de cocina. Muestra lo pendiente por mesa con el tiempo de espera; el cocinero marca cada plato como listo y el mesero ve el aviso en la mesa. En *Panel → Menú* eliges qué categorías van a cocina (por ejemplo, desactiva Bebidas).
 - `/admin`: panel del dueño (contraseña `ADMIN_PASSWORD`).
 

@@ -42,6 +42,15 @@ export default async function MesaPage({ params }: { params: Promise<{ id: strin
   if (!mesa) notFound();
 
   const esMostrador = mesa.number === 0;
+
+  // Estado en cocina de los productos de la cuenta abierta
+  const kitchenByProduct: Record<number, { pending: number; ready: number }> = {};
+  for (const k of cocina) {
+    if (k.orderId !== openOrder?.id) continue;
+    const e = (kitchenByProduct[k.productId] ??= { pending: 0, ready: 0 });
+    if (k.status === "PENDING") e.pending += k.quantity;
+    else e.ready += k.quantity;
+  }
   const paid = openOrder?.payments.reduce((s, p) => s + p.amount, 0) ?? 0;
   const hasItems = (openOrder?.items.length ?? 0) > 0;
 
@@ -86,6 +95,8 @@ export default async function MesaPage({ params }: { params: Promise<{ id: strin
 
       <OrderWorkspace
         mesaId={mesaId}
+        label={esMostrador ? "Para llevar" : `Mesa ${mesa.number}`}
+        kitchen={kitchenByProduct}
         orderId={openOrder?.id ?? null}
         products={productos.map((p) => ({ id: p.id, name: p.name, price: p.price, categoryId: p.categoryId }))}
         categories={categorias.map((c) => ({ id: c.id, name: c.name }))}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Bell, BellOff, Check, ChefHat, Clock, RotateCcw, ShoppingBag, UserRound } from "lucide-react";
 import { markKitchenItemReady, markKitchenOrderReady, undoKitchenItem } from "@/app/actions";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/Brand";
 
 export interface KitchenTicketItem {
   id: number;
@@ -122,8 +123,8 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
     });
 
   return (
-    <div className="min-h-dvh bg-stone-950 text-stone-100">
-      <header className="sticky top-0 z-10 bg-stone-950/90 backdrop-blur border-b border-white/10">
+    <div className="min-h-dvh bg-background text-foreground">
+      <header className="sticky top-0 z-10 bg-background/90 backdrop-blur border-b">
         <div className="px-4 sm:px-6 h-16 flex items-center gap-3">
           <Link
             href="/"
@@ -132,12 +133,10 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
           >
             <ArrowLeft className="size-5" />
           </Link>
-          <span className="size-10 rounded-xl bg-primary text-primary-foreground grid place-items-center">
-            <ChefHat className="size-5" />
-          </span>
+          <BrandMark className="h-10 shrink-0" priority />
           <div className="min-w-0 flex-1">
             <p className="font-semibold leading-tight">Cocina</p>
-            <p className="text-xs text-stone-400 truncate">{business}</p>
+            <p className="text-xs text-ink-400 truncate">{business}</p>
           </div>
           <div className="hidden sm:flex items-center gap-2 text-sm">
             <span className="px-3 h-9 rounded-full bg-white/5 border border-white/10 inline-flex items-center gap-2">
@@ -156,7 +155,7 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
             }}
             className={cn(
               "h-11 px-4 rounded-full text-sm font-medium inline-flex items-center gap-2 transition-colors",
-              sound ? "bg-primary text-primary-foreground" : "bg-white/10 text-stone-300 hover:bg-white/15"
+              sound ? "bg-primary text-primary-foreground" : "bg-white/10 text-ink-300 hover:bg-white/15"
             )}
             aria-pressed={sound}
           >
@@ -169,9 +168,9 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
       <main className="p-4 sm:p-6 space-y-8">
         {active.length === 0 ? (
           <div className="py-24 text-center">
-            <ChefHat className="size-14 mx-auto text-stone-700" />
+            <ChefHat className="size-14 mx-auto text-ink-700" />
             <p className="mt-4 text-xl font-semibold">Todo al día</p>
-            <p className="text-stone-400 mt-1">Las comandas nuevas aparecerán aquí automáticamente.</p>
+            <p className="text-ink-400 mt-1">Las comandas nuevas aparecerán aquí automáticamente.</p>
           </div>
         ) : (
           <div className="columns-1 sm:columns-2 lg:columns-3 2xl:columns-4 gap-4 [&>*]:mb-4">
@@ -183,14 +182,14 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
                 <article
                   key={t.orderId}
                   className={cn(
-                    "break-inside-avoid rounded-2xl overflow-hidden bg-stone-900 border-2",
+                    "break-inside-avoid rounded-2xl overflow-hidden bg-ink-900 border-2",
                     level === "late" ? "border-red-500" : level === "warn" ? "border-amber-400" : "border-white/10"
                   )}
                 >
                   <header
                     className={cn(
                       "px-4 py-3 flex items-center gap-3",
-                      level === "late" ? "bg-red-500 text-white" : level === "warn" ? "bg-amber-400 text-stone-950" : "bg-white/5"
+                      level === "late" ? "bg-red-500 text-white" : level === "warn" ? "bg-amber-400 text-ink-950" : "bg-white/5"
                     )}
                   >
                     {t.table === 0 ? <ShoppingBag className="size-6" /> : null}
@@ -202,7 +201,7 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
                     </span>
                   </header>
                   {t.waiter && (
-                    <p className="px-4 pt-2 text-sm text-stone-400 inline-flex items-center gap-1.5">
+                    <p className="px-4 pt-2 text-sm text-ink-400 inline-flex items-center gap-1.5">
                       <UserRound className="size-4" /> {t.waiter}
                     </p>
                   )}
@@ -218,13 +217,13 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
                           >
                             <span className="text-2xl font-bold tabular w-10 text-primary">{i.quantity}×</span>
                             <span className="flex-1 text-xl font-semibold leading-tight">{i.name}</span>
-                            <span className="size-10 rounded-full border-2 border-white/20 grid place-items-center text-transparent group-hover:text-stone-400 group-hover:border-stone-400 transition-colors">
+                            <span className="size-10 rounded-full border-2 border-white/20 grid place-items-center text-transparent group-hover:text-ink-400 group-hover:border-ink-400 transition-colors">
                               <Check className="size-5" />
                             </span>
                           </button>
                         </li>
                       ) : (
-                        <li key={i.id} className="flex items-center gap-3 rounded-xl px-3 py-2 text-stone-500">
+                        <li key={i.id} className="flex items-center gap-3 rounded-xl px-3 py-2 text-ink-500">
                           <span className="text-lg font-semibold tabular w-10">{i.quantity}×</span>
                           <span className="flex-1 text-lg line-through">{i.name}</span>
                           <button
@@ -232,7 +231,7 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
                             onClick={() => undo(i.id)}
                             aria-label={`Deshacer ${i.name}`}
                             title="Deshacer"
-                            className="size-10 rounded-full grid place-items-center hover:bg-white/10 hover:text-stone-200"
+                            className="size-10 rounded-full grid place-items-center hover:bg-white/10 hover:text-ink-200"
                           >
                             <RotateCcw className="size-4" />
                           </button>
@@ -258,26 +257,26 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
 
         {done.length > 0 && (
           <section>
-            <h2 className="text-sm font-medium text-stone-400 mb-3">Listos hace poco</h2>
+            <h2 className="text-sm font-medium text-ink-400 mb-3">Listos hace poco</h2>
             <div className="flex flex-wrap gap-2">
               {done.map((t) => (
                 <div
                   key={t.orderId}
-                  className="rounded-xl bg-stone-900 border border-white/10 px-3 py-2 flex items-center gap-3"
+                  className="rounded-xl bg-ink-900 border border-white/10 px-3 py-2 flex items-center gap-3"
                 >
                   <span className="size-7 rounded-full bg-success/20 text-success grid place-items-center">
                     <Check className="size-4" />
                   </span>
                   <div className="text-sm">
                     <p className="font-semibold">{t.table === 0 ? "Para llevar" : `Mesa ${t.table}`}</p>
-                    <p className="text-stone-400">
+                    <p className="text-ink-400">
                       {t.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => t.items.forEach((i) => undo(i.id))}
-                    className="h-9 px-3 rounded-lg text-sm text-stone-300 hover:bg-white/10 inline-flex items-center gap-1.5"
+                    className="h-9 px-3 rounded-lg text-sm text-ink-300 hover:bg-white/10 inline-flex items-center gap-1.5"
                   >
                     <RotateCcw className="size-4" /> Deshacer
                   </button>

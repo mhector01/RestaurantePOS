@@ -169,9 +169,9 @@ function Card({
   tone?: "dark" | "green" | "blue";
 }) {
   return (
-    <div className={cn("rounded-2xl p-4 sm:p-5 border", tone === "dark" ? "bg-foreground text-background border-foreground" : "bg-card")}>
+    <div className={cn("rounded-2xl p-4 sm:p-5 border", tone === "dark" ? "bg-gradient-to-br from-primary to-orange-700 text-primary-foreground border-primary" : "bg-card")}>
       <div className="flex items-center justify-between">
-        <p className={cn("text-sm", tone === "dark" ? "text-background/70" : "text-muted-foreground")}>{label}</p>
+        <p className={cn("text-sm", tone === "dark" ? "text-white/80" : "text-muted-foreground")}>{label}</p>
         <Icon
           className={cn(
             "size-4",

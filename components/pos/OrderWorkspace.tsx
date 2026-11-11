@@ -2,7 +2,19 @@
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ChevronUp, Minus, Plus, ReceiptText, Search, Split, Trash2, X } from "lucide-react";
+import {
+  BellRing,
+  ChefHat,
+  ChevronUp,
+  Minus,
+  Plus,
+  ReceiptText,
+  Search,
+  ShoppingBag,
+  Split,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   addProductToOrder,
   clearOrder,
@@ -33,14 +45,18 @@ export interface OrderLine {
   price: number;
   quantity: number;
 }
+/** Estado en cocina por producto de esta cuenta. */
+export type KitchenStatus = Record<number, { pending: number; ready: number }>;
 
 interface Props {
   mesaId: number;
+  label: string; // "Mesa 4" o "Para llevar"
   orderId: number | null;
   products: MenuProduct[];
   categories: MenuCategory[];
   items: OrderLine[];
   paid: number;
+  kitchen?: KitchenStatus;
 }
 
 type OptimisticAction =
@@ -48,19 +64,30 @@ type OptimisticAction =
   | { type: "inc"; id: number }
   | { type: "dec"; id: number };
 
-// Colores suaves para distinguir categorías de un vistazo
-const CAT_COLORS = [
-  "bg-orange-500",
-  "bg-sky-500",
-  "bg-emerald-500",
-  "bg-violet-500",
-  "bg-rose-500",
-  "bg-amber-500",
-  "bg-teal-500",
-  "bg-fuchsia-500",
+// Paleta para distinguir categorías de un vistazo
+const CAT_STYLES = [
+  { bar: "bg-orange-500", soft: "bg-orange-500/15 text-orange-300", ring: "ring-orange-500/40" },
+  { bar: "bg-sky-500", soft: "bg-sky-500/15 text-sky-300", ring: "ring-sky-500/40" },
+  { bar: "bg-emerald-500", soft: "bg-emerald-500/15 text-emerald-300", ring: "ring-emerald-500/40" },
+  { bar: "bg-violet-500", soft: "bg-violet-500/15 text-violet-300", ring: "ring-violet-500/40" },
+  { bar: "bg-rose-500", soft: "bg-rose-500/15 text-rose-300", ring: "ring-rose-500/40" },
+  { bar: "bg-amber-400", soft: "bg-amber-400/15 text-amber-200", ring: "ring-amber-400/40" },
+  { bar: "bg-teal-400", soft: "bg-teal-400/15 text-teal-200", ring: "ring-teal-400/40" },
+  { bar: "bg-fuchsia-500", soft: "bg-fuchsia-500/15 text-fuchsia-300", ring: "ring-fuchsia-500/40" },
 ];
+type CatStyle = (typeof CAT_STYLES)[number];
+const NEUTRAL: CatStyle = { bar: "bg-ink-500", soft: "bg-ink-500/15 text-ink-300", ring: "ring-ink-500/40" };
 
-export function OrderWorkspace({ mesaId, orderId, products, categories, items, paid }: Props) {
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter((w) => w.length > 2 || /^[A-ZÁÉÍÓÚÑ]/.test(w))
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join("") || name.slice(0, 2).toUpperCase();
+}
+
+export function OrderWorkspace({ mesaId, label, orderId, products, categories, items, paid, kitchen = {} }: Props) {
   const [, startTransition] = useTransition();
   const [optimisticItems, applyOptimistic] = useOptimistic(items, (state: OrderLine[], action: OptimisticAction) => {
     switch (action.type) {
@@ -100,11 +127,13 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
   const [checkoutOrderId, setCheckoutOrderId] = useState(orderId);
   if (orderId && orderId !== checkoutOrderId) setCheckoutOrderId(orderId);
 
-  const catColor = useMemo(() => {
-    const m = new Map<number, string>();
-    categories.forEach((c, i) => m.set(c.id, CAT_COLORS[i % CAT_COLORS.length]));
+  const catStyle = useMemo(() => {
+    const m = new Map<number, CatStyle>();
+    categories.forEach((c, i) => m.set(c.id, CAT_STYLES[i % CAT_STYLES.length]));
     return m;
   }, [categories]);
+  const styleOf = (categoryId: number) => catStyle.get(categoryId) ?? NEUTRAL;
+  const categoryOfProduct = useMemo(() => new Map(products.map((p) => [p.id, p.categoryId])), [products]);
 
   const qtyByProduct = useMemo(() => {
     const m = new Map<number, number>();
@@ -112,9 +141,15 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
     return m;
   }, [optimisticItems]);
 
+  const countByCategory = useMemo(() => {
+    const m = new Map<number, number>();
+    products.forEach((p) => m.set(p.categoryId, (m.get(p.categoryId) ?? 0) + 1));
+    return m;
+  }, [products]);
+
+  const q = query.trim().toLowerCase();
   const filtered = products.filter((p) => {
-    const inCat = category === "all" || p.categoryId === category;
-    const q = query.trim().toLowerCase();
+    const inCat = q ? true : category === "all" || p.categoryId === category;
     return inCat && (!q || p.name.toLowerCase().includes(q));
   });
 
@@ -144,6 +179,11 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
       await removeProductFromOrder(line.id, mesaId);
     });
 
+  const decProduct = (productId: number) => {
+    const line = optimisticItems.find((i) => i.productId === productId && i.id > 0);
+    if (line) dec(line);
+  };
+
   const openCheckout = (mode: "full" | "split") => {
     setSheetOpen(false);
     setCheckout({ open: true, mode });
@@ -153,12 +193,15 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
   // Panel de la cuenta (se reutiliza en escritorio y en la hoja móvil)
   // ------------------------------------------------------------------
   const orderPanel = (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <div>
-          <h2 className="text-lg font-semibold">Cuenta</h2>
+    <div className="flex flex-col h-full min-h-0 w-full">
+      <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b">
+        <span className="size-11 rounded-xl bg-primary/15 text-primary grid place-items-center shrink-0">
+          {label === "Para llevar" ? <ShoppingBag className="size-5" /> : <ReceiptText className="size-5" />}
+        </span>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-semibold leading-tight">Cuenta · {label}</h2>
           <p className="text-sm text-muted-foreground">
-            {count} producto{count === 1 ? "" : "s"}
+            {count === 0 ? "Sin productos" : `${count} producto${count === 1 ? "" : "s"}`}
           </p>
         </div>
         {!isEmpty && orderId && (
@@ -179,61 +222,84 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         {isEmpty ? (
           <div className="h-full min-h-48 flex flex-col items-center justify-center text-center px-6 text-muted-foreground">
-            <ReceiptText className="size-10 mb-3 opacity-40" />
-            <p className="font-medium text-foreground">Cuenta vacía</p>
+            <span className="size-16 rounded-2xl bg-muted grid place-items-center mb-4">
+              <ReceiptText className="size-8 opacity-60" />
+            </span>
+            <p className="font-medium text-foreground">La cuenta está vacía</p>
             <p className="text-sm mt-1">Toca un producto del menú para agregarlo.</p>
           </div>
         ) : (
-          <ul className="space-y-1 pb-2">
-            {optimisticItems.map((line) => (
-              <li key={line.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-muted/60">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium leading-tight truncate">{line.name}</p>
-                  <p className="text-xs text-muted-foreground tabular mt-0.5">
-                    {formatMoney(line.price)} c/u
-                  </p>
-                </div>
-                <div className="flex items-center rounded-xl border bg-card">
-                  <button
-                    type="button"
-                    aria-label={`Quitar una unidad de ${line.name}`}
-                    onClick={() => dec(line)}
-                    className="size-10 grid place-items-center text-muted-foreground hover:text-destructive"
-                  >
-                    {line.quantity === 1 ? <Trash2 className="size-4" /> : <Minus className="size-4" />}
-                  </button>
-                  <span className="w-6 text-center font-semibold tabular">{line.quantity}</span>
-                  <button
-                    type="button"
-                    aria-label={`Agregar una unidad de ${line.name}`}
-                    onClick={() => inc(line)}
-                    className="size-10 grid place-items-center text-muted-foreground hover:text-primary"
-                  >
-                    <Plus className="size-4" />
-                  </button>
-                </div>
-                <span className="w-20 text-right font-semibold tabular">
-                  {formatMoney(line.price * line.quantity)}
-                </span>
-              </li>
-            ))}
+          <ul className="divide-y divide-border/60">
+            {optimisticItems.map((line) => {
+              const st = styleOf(categoryOfProduct.get(line.productId) ?? -1);
+              const k = kitchen[line.productId];
+              return (
+                <li key={line.id} className="flex gap-3 px-2 py-3">
+                  <span className={cn("w-1 rounded-full shrink-0", st.bar)} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start gap-2">
+                      <p className="flex-1 font-medium leading-snug">{line.name}</p>
+                      <span className="font-semibold tabular">{formatMoney(line.price * line.quantity)}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground tabular">{formatMoney(line.price)} c/u</span>
+                      {k && k.ready > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 text-emerald-300 text-[11px] font-medium px-2 py-0.5">
+                          <BellRing className="size-3" /> {k.ready} listo{k.ready === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {k && k.pending > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 text-amber-200 text-[11px] font-medium px-2 py-0.5">
+                          <ChefHat className="size-3" /> {k.pending} en cocina
+                        </span>
+                      )}
+                      <div className="ml-auto flex items-center rounded-xl bg-muted">
+                        <button
+                          type="button"
+                          aria-label={`Quitar una unidad de ${line.name}`}
+                          onClick={() => dec(line)}
+                          className="size-9 grid place-items-center text-muted-foreground hover:text-destructive"
+                        >
+                          {line.quantity === 1 ? <Trash2 className="size-4" /> : <Minus className="size-4" />}
+                        </button>
+                        <span className="w-7 text-center font-semibold tabular">{line.quantity}</span>
+                        <button
+                          type="button"
+                          aria-label={`Agregar una unidad de ${line.name}`}
+                          onClick={() => inc(line)}
+                          className="size-9 grid place-items-center text-muted-foreground hover:text-primary"
+                        >
+                          <Plus className="size-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
 
-      <div className="border-t p-4 space-y-3 bg-card">
-        {paid > 0 && (
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Ya abonado</span>
-            <span className="text-success font-medium tabular">{formatMoney(paid)}</span>
+      <div className="border-t p-4 space-y-3 bg-ink-950/40">
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between text-muted-foreground">
+            <span>Productos</span>
+            <span className="tabular">{count}</span>
           </div>
-        )}
+          {paid > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Ya abonado</span>
+              <span className="text-success font-medium tabular">{formatMoney(paid)}</span>
+            </div>
+          )}
+        </div>
         <div className="flex justify-between items-baseline">
           <span className="text-muted-foreground">{paid > 0 ? "Pendiente" : "Total"}</span>
-          <span className="text-3xl font-semibold tabular">{formatMoney(total)}</span>
+          <span className="text-3xl font-bold tabular tracking-tight">{formatMoney(total)}</span>
         </div>
         <div className="grid grid-cols-[auto_1fr] gap-2">
           <Button
@@ -246,7 +312,7 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
             <Split /> Dividir
           </Button>
           <Button
-            className="h-14 rounded-xl text-base"
+            className="h-14 rounded-xl text-base font-semibold shadow-lg shadow-primary/25"
             disabled={isEmpty || syncing || !orderId}
             onClick={() => openCheckout("full")}
           >
@@ -261,14 +327,14 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
     <div className="flex-1 min-h-0 flex">
       {/* ---------------------------- MENÚ ---------------------------- */}
       <section className="flex-1 min-w-0 flex flex-col">
-        <div className="sticky top-16 z-10 bg-background/90 backdrop-blur px-4 sm:px-6 pt-4 pb-3 space-y-3 border-b lg:border-none">
+        <div className="sticky top-16 z-10 bg-background/90 backdrop-blur px-4 sm:px-6 pt-4 pb-3 space-y-3 border-b">
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar producto…"
-              className="w-full h-12 rounded-xl border bg-card pl-11 pr-10 outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
+              placeholder="Buscar en el menú…"
+              className="w-full h-12 rounded-xl border bg-card pl-11 pr-10 outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-3 focus:ring-primary/20"
             />
             {query && (
               <button
@@ -282,12 +348,20 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
             )}
           </div>
           <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-            <CategoryChip active={category === "all"} onClick={() => setCategory("all")}>
+            <CategoryChip active={!q && category === "all"} onClick={() => setCategory("all")} count={products.length}>
               Todo
             </CategoryChip>
             {categories.map((c) => (
-              <CategoryChip key={c.id} active={category === c.id} onClick={() => setCategory(c.id)}>
-                <span className={cn("size-2 rounded-full", catColor.get(c.id))} />
+              <CategoryChip
+                key={c.id}
+                active={!q && category === c.id}
+                onClick={() => {
+                  setCategory(c.id);
+                  setQuery("");
+                }}
+                count={countByCategory.get(c.id) ?? 0}
+              >
+                <span className={cn("size-2.5 rounded-full", styleOf(c.id).bar)} />
                 {c.name}
               </CategoryChip>
             ))}
@@ -295,6 +369,11 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
         </div>
 
         <div className="px-4 sm:px-6 pt-4 pb-28 lg:pb-8">
+          {q && (
+            <p className="text-sm text-muted-foreground mb-3">
+              {filtered.length} resultado{filtered.length === 1 ? "" : "s"} para “{query.trim()}”
+            </p>
+          )}
           {filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
               {products.length === 0
@@ -302,33 +381,50 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
                 : "No se encontraron productos."}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
               {filtered.map((p) => {
-                const q = qtyByProduct.get(p.id) ?? 0;
+                const qty = qtyByProduct.get(p.id) ?? 0;
+                const st = styleOf(p.categoryId);
                 return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => add(p)}
-                    className={cn(
-                      "relative text-left rounded-2xl border bg-card p-4 min-h-28 flex flex-col transition-all hover:shadow-md hover:border-primary/40 active:scale-[0.97]",
-                      q > 0 && "border-primary/50 ring-1 ring-primary/20"
-                    )}
-                  >
-                    <span className={cn("absolute left-0 top-4 bottom-4 w-1 rounded-r-full", catColor.get(p.categoryId))} />
-                    <span className="font-medium leading-snug line-clamp-2 pr-6">{p.name}</span>
-                    <span className="mt-auto pt-3 flex items-end justify-between">
-                      <span className="text-lg font-semibold tabular">{formatMoney(p.price)}</span>
-                      <span className="size-8 rounded-lg bg-muted grid place-items-center text-muted-foreground">
-                        <Plus className="size-4" />
+                  <div key={p.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => add(p)}
+                      className={cn(
+                        "w-full text-left rounded-2xl border bg-card overflow-hidden min-h-36 flex flex-col transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 hover:border-primary/40 active:scale-[0.97]",
+                        qty > 0 && "border-primary/70 ring-2 ring-primary/25"
+                      )}
+                    >
+                      <span className={cn("h-1.5 w-full", st.bar)} />
+                      <span className="p-3.5 flex-1 flex flex-col">
+                        <span className={cn("size-10 rounded-xl grid place-items-center text-sm font-bold", st.soft)}>
+                          {initials(p.name)}
+                        </span>
+                        <span className="mt-2.5 font-medium leading-snug line-clamp-2">{p.name}</span>
+                        <span className="mt-auto pt-2 flex items-end justify-between gap-2">
+                          <span className="text-lg font-bold tabular">{formatMoney(p.price)}</span>
+                          <span className="size-9 rounded-full bg-primary text-primary-foreground grid place-items-center shadow-md shadow-primary/30">
+                            <Plus className="size-5" />
+                          </span>
+                        </span>
                       </span>
-                    </span>
-                    {q > 0 && (
-                      <span className="absolute -top-2 -right-2 min-w-7 h-7 px-1.5 rounded-full bg-primary text-primary-foreground text-sm font-semibold grid place-items-center shadow-sm tabular">
-                        {q}
-                      </span>
+                    </button>
+                    {qty > 0 && (
+                      <>
+                        <span className="pointer-events-none absolute -top-2 -right-2 min-w-7 h-7 px-1.5 rounded-full bg-primary text-primary-foreground text-sm font-bold grid place-items-center shadow-md tabular ring-2 ring-background">
+                          {qty}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Quitar una unidad de ${p.name}`}
+                          onClick={() => decProduct(p.id)}
+                          className="absolute top-3.5 right-3 size-9 rounded-full bg-muted text-muted-foreground grid place-items-center hover:text-destructive hover:bg-destructive/15"
+                        >
+                          <Minus className="size-4" />
+                        </button>
+                      </>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -346,14 +442,12 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
-          className="w-full h-16 rounded-2xl bg-foreground text-background flex items-center gap-3 px-4 shadow-lg active:scale-[0.99] transition-transform"
+          className="w-full h-16 rounded-2xl bg-primary text-primary-foreground flex items-center gap-3 px-4 shadow-xl shadow-primary/25 active:scale-[0.99] transition-transform"
         >
-          <span className="min-w-9 h-9 px-2 rounded-xl bg-primary text-primary-foreground grid place-items-center font-semibold tabular">
-            {count}
-          </span>
-          <span className="flex-1 text-left font-medium">Ver cuenta</span>
-          <span className="text-lg font-semibold tabular">{formatMoney(total)}</span>
-          <ChevronUp className="size-5 opacity-70" />
+          <span className="min-w-9 h-9 px-2 rounded-xl bg-black/20 grid place-items-center font-bold tabular">{count}</span>
+          <span className="flex-1 text-left font-semibold">Ver cuenta</span>
+          <span className="text-lg font-bold tabular">{formatMoney(total)}</span>
+          <ChevronUp className="size-5 opacity-80" />
         </button>
       </div>
 
@@ -385,10 +479,12 @@ export function OrderWorkspace({ mesaId, orderId, products, categories, items, p
 function CategoryChip({
   active,
   onClick,
+  count,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  count: number;
   children: React.ReactNode;
 }) {
   return (
@@ -396,11 +492,19 @@ function CategoryChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "h-10 px-4 rounded-full text-sm font-medium whitespace-nowrap inline-flex items-center gap-2 border transition-colors shrink-0",
-        active ? "bg-foreground text-background border-foreground" : "bg-card hover:bg-muted"
+        "h-10 pl-4 pr-3 rounded-full text-sm font-medium whitespace-nowrap inline-flex items-center gap-2 border transition-colors shrink-0",
+        active ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-muted"
       )}
     >
       {children}
+      <span
+        className={cn(
+          "min-w-5 h-5 px-1 rounded-full text-[11px] grid place-items-center tabular",
+          active ? "bg-black/20" : "bg-muted text-muted-foreground"
+        )}
+      >
+        {count}
+      </span>
     </button>
   );
 }

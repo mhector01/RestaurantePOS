@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, LockKeyhole } from "lucide-react";
 import { loginAdmin } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BrandLogo } from "@/components/Brand";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -23,20 +24,20 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-stone-950 flex flex-col p-4">
+    <div className="min-h-dvh bg-ink-950 flex flex-col p-4">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-stone-400 hover:text-white text-sm font-medium h-11 px-2 self-start"
+        className="inline-flex items-center gap-2 text-ink-400 hover:text-white text-sm font-medium h-11 px-2 self-start"
       >
         <ArrowLeft className="size-5" /> Volver al punto de venta
       </Link>
 
       <div className="flex-1 flex items-center justify-center pb-10">
-        <div className="bg-card w-full max-w-sm rounded-3xl p-8 shadow-2xl">
-          <span className="size-14 rounded-2xl bg-accent text-primary grid place-items-center mb-5">
-            <LockKeyhole className="size-7" />
-          </span>
-          <h1 className="text-2xl font-semibold">Administración</h1>
+        <div className="bg-card border w-full max-w-sm rounded-3xl p-8 shadow-2xl shadow-black/40">
+          <BrandLogo className="h-20 mb-7 -ml-1" priority />
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <LockKeyhole className="size-5 text-primary" /> Administración
+          </h1>
           <p className="text-muted-foreground mt-1">Ingresa la contraseña del administrador.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
