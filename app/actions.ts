@@ -2,11 +2,18 @@
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ADMIN_COOKIE, adminToken, getAdminPassword, isValidAdminToken } from "@/lib/auth";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
+/** Cookie "Secure" solo si la petición llegó por HTTPS (detrás del proxy de Coolify se ve en x-forwarded-proto). */
+async function isHttps() {
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  return proto === "https";
+}
+
 async function requireAdmin() {
   const cookieStore = await cookies();
   if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value))) {
@@ -354,7 +361,7 @@ export async function loginAdmin(formData: FormData) {
     cookieStore.set(ADMIN_COOKIE, (await adminToken())!, {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: await isHttps(),
       maxAge: 60 * 60 * 8,
     });
     redirect("/admin");
@@ -411,7 +418,7 @@ export async function loginWaiter(pin: string) {
   const cookieStore = await cookies();
   cookieStore.set("waiter_id", user.id.toString(), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: await isHttps(),
     maxAge: 60 * 60 * 12,
   });
 
