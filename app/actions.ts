@@ -24,6 +24,81 @@ async function requireAdmin() {
 function refreshTable(mesaId: number) {
   revalidatePath(`/mesa/${mesaId}`);
   revalidatePath("/");
+  revalidatePath("/cocina");
+}
+
+// ---------------------------------------------------------------------------
+// COCINA: lo pendiente por preparar se lleva aparte de la cuenta
+// ---------------------------------------------------------------------------
+
+/** Manda unidades de un producto a la cocina (si su categoría va a cocina). */
+async function kitchenAdd(orderId: number, productId: number, qty = 1) {
+  const product = await prisma.product.findUnique({ where: { id: productId }, include: { category: true } });
+  if (!product?.category.kitchen) return;
+  const pending = await prisma.kitchenItem.findFirst({ where: { orderId, productId, status: "PENDING" } });
+  if (pending) {
+    await prisma.kitchenItem.update({ where: { id: pending.id }, data: { quantity: { increment: qty } } });
+  } else {
+    await prisma.kitchenItem.create({ data: { orderId, productId, quantity: qty } });
+  }
+}
+
+/** Cancela unidades que la cocina aún no ha preparado. */
+async function kitchenRemove(orderId: number, productId: number, qty: number) {
+  const pending = await prisma.kitchenItem.findFirst({ where: { orderId, productId, status: "PENDING" } });
+  if (!pending) return;
+  if (pending.quantity > qty) {
+    await prisma.kitchenItem.update({ where: { id: pending.id }, data: { quantity: pending.quantity - qty } });
+  } else {
+    await prisma.kitchenItem.delete({ where: { id: pending.id } });
+  }
+}
+
+function refreshKitchen() {
+  revalidatePath("/cocina");
+  revalidatePath("/");
+  revalidatePath("/mesa/[id]", "page");
+}
+
+/** La cocina marca un plato como listo. */
+export async function markKitchenItemReady(id: number) {
+  await prisma.kitchenItem.updateMany({ where: { id, status: "PENDING" }, data: { status: "READY", readyAt: new Date() } });
+  refreshKitchen();
+}
+
+/** La cocina marca todo lo pendiente de una comanda como listo. */
+export async function markKitchenOrderReady(orderId: number) {
+  await prisma.kitchenItem.updateMany({
+    where: { orderId, status: "PENDING" },
+    data: { status: "READY", readyAt: new Date() },
+  });
+  refreshKitchen();
+}
+
+/** Deshace un "listo" marcado por error. */
+export async function undoKitchenItem(id: number) {
+  const item = await prisma.kitchenItem.findUnique({ where: { id } });
+  if (!item || item.status !== "READY") return;
+  const pending = await prisma.kitchenItem.findFirst({
+    where: { orderId: item.orderId, productId: item.productId, status: "PENDING" },
+  });
+  if (pending) {
+    // Si mientras tanto pidieron más del mismo producto, se juntan en una sola línea.
+    await prisma.kitchenItem.update({ where: { id: pending.id }, data: { quantity: { increment: item.quantity } } });
+    await prisma.kitchenItem.delete({ where: { id } });
+  } else {
+    await prisma.kitchenItem.update({ where: { id }, data: { status: "PENDING", readyAt: null } });
+  }
+  refreshKitchen();
+}
+
+/** El mesero confirma que ya llevó a la mesa lo que estaba listo. */
+export async function markTableServed(tableId: number) {
+  await prisma.kitchenItem.updateMany({
+    where: { status: "READY", order: { tableId } },
+    data: { status: "SERVED" },
+  });
+  refreshKitchen();
 }
 
 /**
@@ -77,6 +152,7 @@ export async function addProductToOrder(tableId: number, productId: number) {
     });
   }
 
+  await kitchenAdd(order.id, productId);
   await prisma.table.update({ where: { id: tableId }, data: { status: "OCCUPIED" } });
   refreshTable(tableId);
   return { success: true };
@@ -84,10 +160,11 @@ export async function addProductToOrder(tableId: number, productId: number) {
 
 /** Suma una unidad a una línea existente de la comanda. */
 export async function incrementOrderItem(orderItemId: number, mesaId: number) {
-  await prisma.orderItem.update({
+  const item = await prisma.orderItem.update({
     where: { id: orderItemId },
     data: { quantity: { increment: 1 } },
   });
+  await kitchenAdd(item.orderId, item.productId);
   refreshTable(mesaId);
 }
 
@@ -104,6 +181,7 @@ export async function removeProductFromOrder(orderItemId: number, mesaId: number
   } else {
     await prisma.orderItem.delete({ where: { id: orderItemId } });
   }
+  await kitchenRemove(item.orderId, item.productId, 1);
 
   const remaining = await prisma.orderItem.count({ where: { orderId: item.orderId } });
   if (remaining === 0) await settleEmptyOrder(item.orderId, mesaId);
@@ -116,6 +194,7 @@ export async function deleteOrderItem(orderItemId: number, mesaId: number) {
   const item = await prisma.orderItem.findUnique({ where: { id: orderItemId } });
   if (!item) return;
   await prisma.orderItem.delete({ where: { id: orderItemId } });
+  await kitchenRemove(item.orderId, item.productId, item.quantity);
 
   const remaining = await prisma.orderItem.count({ where: { orderId: item.orderId } });
   if (remaining === 0) await settleEmptyOrder(item.orderId, mesaId);
@@ -126,6 +205,7 @@ export async function deleteOrderItem(orderItemId: number, mesaId: number) {
 /** Vacía la comanda completa y libera la mesa. */
 export async function clearOrder(orderId: number, mesaId: number) {
   await prisma.orderItem.deleteMany({ where: { orderId } });
+  await prisma.kitchenItem.deleteMany({ where: { orderId, status: "PENDING" } });
   await settleEmptyOrder(orderId, mesaId);
   refreshTable(mesaId);
 }
@@ -273,6 +353,12 @@ export async function createCategory(name: string) {
   const created = await prisma.category.create({ data: { name: clean } });
   revalidatePath("/admin/productos");
   return created;
+}
+
+export async function setCategoryKitchen(id: number, kitchen: boolean) {
+  await requireAdmin();
+  await prisma.category.update({ where: { id }, data: { kitchen } });
+  revalidatePath("/admin/productos");
 }
 
 export async function deleteCategory(id: number) {

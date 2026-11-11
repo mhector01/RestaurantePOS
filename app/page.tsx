@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Settings, UtensilsCrossed } from "lucide-react";
+import { ChefHat, Settings, UtensilsCrossed } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { BUSINESS } from "@/lib/config";
 import { FloorPlan, type FloorTable } from "@/components/pos/FloorPlan";
@@ -15,6 +15,13 @@ export default async function Home() {
   const waiter = waiterId
     ? await prisma.user.findUnique({ where: { id: parseInt(waiterId) } })
     : null;
+
+  const readyRows = await prisma.kitchenItem.findMany({
+    where: { status: "READY" },
+    select: { quantity: true, order: { select: { tableId: true } } },
+  });
+  const readyByTable = new Map<number, number>();
+  for (const r of readyRows) readyByTable.set(r.order.tableId, (readyByTable.get(r.order.tableId) ?? 0) + r.quantity);
 
   const tables = await prisma.table.findMany({
     orderBy: { number: "asc" },
@@ -39,6 +46,7 @@ export default async function Home() {
       items,
       openedAt: order ? order.createdAt.toISOString() : null,
       waiter: order?.user?.name ?? null,
+      ready: readyByTable.get(t.id) ?? 0,
     };
   });
 
@@ -58,6 +66,14 @@ export default async function Home() {
             <p className="text-xs text-muted-foreground">Punto de venta</p>
           </div>
           <WaiterChip name={waiter?.name ?? null} />
+          <Link
+            href="/cocina"
+            aria-label="Pantalla de cocina"
+            title="Pantalla de cocina"
+            className="size-11 rounded-full border bg-card grid place-items-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChefHat className="size-5" />
+          </Link>
           <Link
             href="/admin"
             aria-label="Panel de administración"

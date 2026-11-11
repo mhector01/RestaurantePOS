@@ -6,6 +6,8 @@ import prisma from "@/lib/prisma";
 import { PinPad } from "@/components/PinPad";
 import { WaiterChip } from "@/components/pos/WaiterChip";
 import { OrderWorkspace } from "@/components/pos/OrderWorkspace";
+import { KitchenReadyBanner } from "@/components/pos/KitchenReadyBanner";
+import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { formatElapsed } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
@@ -22,13 +24,18 @@ export default async function MesaPage({ params }: { params: Promise<{ id: strin
   const mesero = waiterId ? await prisma.user.findUnique({ where: { id: parseInt(waiterId) } }) : null;
   if (!mesero) return <PinPad />;
 
-  const [mesa, productos, categorias, openOrder] = await Promise.all([
+  const [mesa, productos, categorias, openOrder, cocina] = await Promise.all([
     prisma.table.findUnique({ where: { id: mesaId } }),
     prisma.product.findMany({ orderBy: { name: "asc" } }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
     prisma.order.findFirst({
       where: { tableId: mesaId, status: "OPEN" },
       include: { items: { include: { product: true }, orderBy: { id: "asc" } }, payments: true, user: true },
+    }),
+    prisma.kitchenItem.findMany({
+      where: { status: { in: ["PENDING", "READY"] }, order: { tableId: mesaId } },
+      include: { product: true },
+      orderBy: { readyAt: "asc" },
     }),
   ]);
 
@@ -40,6 +47,7 @@ export default async function MesaPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="min-h-dvh flex flex-col">
+      <AutoRefresh seconds={15} />
       <header className="sticky top-0 z-20 h-16 bg-background/85 backdrop-blur border-b">
         <div className="h-full px-3 sm:px-6 flex items-center gap-2 sm:gap-3">
           <Link
@@ -69,6 +77,12 @@ export default async function MesaPage({ params }: { params: Promise<{ id: strin
           <WaiterChip name={mesero.name} />
         </div>
       </header>
+
+      <KitchenReadyBanner
+        tableId={mesaId}
+        ready={cocina.filter((k) => k.status === "READY").map((k) => ({ name: k.product.name, quantity: k.quantity }))}
+        pendingUnits={cocina.filter((k) => k.status === "PENDING").reduce((s, k) => s + k.quantity, 0)}
+      />
 
       <OrderWorkspace
         mesaId={mesaId}

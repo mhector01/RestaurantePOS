@@ -1,6 +1,12 @@
 # POS Restaurante
 
-Punto de venta para restaurantes: mesas, comandas, cobro (total o dividido, efectivo/tarjeta), tickets y panel de administración.
+Punto de venta para restaurantes: mesas, comandas, pantalla de cocina, cobro (total o dividido, efectivo/tarjeta), tickets y panel de administración.
+
+## Pantallas
+
+- `/`: plano de mesas para meseros (entran con su PIN).
+- `/cocina`: pantalla de cocina. Muestra lo pendiente por mesa con el tiempo de espera; el cocinero marca cada plato como listo y el mesero ve el aviso en la mesa. En *Panel → Menú* eliges qué categorías van a cocina (por ejemplo, desactiva Bebidas).
+- `/admin`: panel del dueño (contraseña `ADMIN_PASSWORD`).
 
 Stack: Next.js 16 · React 19 · Prisma 7 · PostgreSQL · Tailwind v4.
 

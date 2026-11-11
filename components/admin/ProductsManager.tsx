@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Trash2, X } from "lucide-react";
-import { deleteCategory, deleteProduct } from "@/app/actions";
+import { useState, useTransition } from "react";
+import { ChefHat, Search, Trash2, X } from "lucide-react";
+import { deleteCategory, deleteProduct, setCategoryKitchen } from "@/app/actions";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ProductModal } from "@/components/ProductModal";
 import { ConfirmAction } from "@/components/pos/ConfirmAction";
@@ -11,6 +12,7 @@ import { formatMoney } from "@/lib/config";
 interface Category {
   id: number;
   name: string;
+  kitchen: boolean;
 }
 interface Product {
   id: number;
@@ -71,6 +73,7 @@ export function ProductsManager({ products, categories }: { products: Product[];
               {category.name}
               <span className="ml-2 text-sm font-normal text-muted-foreground">{total}</span>
             </h2>
+            <KitchenToggle category={category} />
             <ProductModal categories={categories} defaultCategoryId={category.id} compact />
             {total === 0 && (
               <ConfirmAction
@@ -120,5 +123,28 @@ export function ProductsManager({ products, categories }: { products: Product[];
         </section>
       ))}
     </div>
+  );
+}
+
+/** Define si los productos de la categoría se envían a la pantalla de cocina. */
+function KitchenToggle({ category }: { category: Category }) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => startTransition(() => setCategoryKitchen(category.id, !category.kitchen))}
+      title={category.kitchen ? "Se envía a cocina. Toca para no enviarla." : "No se envía a cocina. Toca para enviarla."}
+      aria-pressed={category.kitchen}
+      className={cn(
+        "h-9 px-3 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 border transition-colors",
+        category.kitchen
+          ? "bg-primary/10 border-primary/30 text-primary"
+          : "bg-card text-muted-foreground line-through decoration-1",
+        pending && "opacity-60"
+      )}
+    >
+      <ChefHat className="size-3.5" /> Cocina
+    </button>
   );
 }

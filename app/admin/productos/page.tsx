@@ -12,7 +12,7 @@ export default async function ProductosPage() {
   ]);
 
   const products = productos.map((p) => ({ id: p.id, name: p.name, price: p.price, categoryId: p.categoryId }));
-  const categories = categorias.map((c) => ({ id: c.id, name: c.name }));
+  const categories = categorias.map((c) => ({ id: c.id, name: c.name, kitchen: c.kitchen }));
 
   return (
     <>

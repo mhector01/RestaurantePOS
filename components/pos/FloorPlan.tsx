@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Clock, Plus, ShoppingBag, UserRound } from "lucide-react";
+import { BellRing, Clock, Plus, ShoppingBag, UserRound } from "lucide-react";
 import { enableCounter } from "@/app/actions";
 import { formatElapsed, formatMoney } from "@/lib/config";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ export interface FloorTable {
   items: number;
   openedAt: string | null;
   waiter: string | null;
+  ready: number; // platos listos en cocina esperando ser servidos
 }
 
 type Filter = "all" | "free" | "busy";
@@ -70,6 +71,7 @@ export function FloorPlan({ tables, counter }: { tables: FloorTable[]; counter: 
                 ? `${counter.items} producto${counter.items === 1 ? "" : "s"} · ${formatMoney(counter.total)}`
                 : "Venta rápida sin mesa"}
             </p>
+            {counter.ready > 0 && <ReadyBadge count={counter.ready} />}
           </div>
           <span
             className={cn(
@@ -135,6 +137,14 @@ export function FloorPlan({ tables, counter }: { tables: FloorTable[]; counter: 
   );
 }
 
+function ReadyBadge({ count }: { count: number }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-success text-white text-xs font-medium px-2 py-0.5 animate-pulse">
+      <BellRing className="size-3" /> {count} listo{count === 1 ? "" : "s"}
+    </span>
+  );
+}
+
 function Stat({ label, value, dot }: { label: string; value: string; dot?: string }) {
   return (
     <div className="rounded-2xl bg-card border px-3 py-3 sm:px-4">
@@ -168,6 +178,11 @@ function TableCard({ table: t }: { table: FloorTable }) {
         </span>
       </div>
       <span className="text-4xl font-semibold tracking-tight leading-none mt-1">{t.number}</span>
+      {t.ready > 0 && (
+        <div className="mt-2">
+          <ReadyBadge count={t.ready} />
+        </div>
+      )}
 
       {t.occupied ? (
         <div className="mt-auto pt-3 space-y-1">

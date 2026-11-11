@@ -21,6 +21,7 @@ model Table {
 model Category {
   id       Int       @id @default(autoincrement())
   name     String    @unique
+  kitchen  Boolean   @default(true) // Sus productos se envían a la pantalla de cocina
   products Product[]
 }
 
@@ -33,8 +34,9 @@ model Product {
   categoryId Int
   category   Category    @relation(fields: [categoryId], references: [id])
   
-  orderItems  OrderItem[]
-  createdAt   DateTime    @default(now())
+  orderItems   OrderItem[]
+  kitchenItems KitchenItem[]
+  createdAt    DateTime    @default(now())
 }
 
 model Order {
@@ -44,6 +46,7 @@ model Order {
   status    String      @default("OPEN") // OPEN o PAID
   items     OrderItem[]
   payments  Payment[]   // Para dividir la cuenta
+  kitchenItems KitchenItem[]
   // --- NUEVO: Relación con el Mesero ---
   userId    Int?
   user      User?       @relation(fields: [userId], references: [id])
@@ -60,6 +63,22 @@ model OrderItem {
   product   Product  @relation(fields: [productId], references: [id])
   quantity  Int      @default(1)
   price     Float    // Precio guardado al momento de la venta
+}
+
+// Lo que la cocina tiene que preparar. Va aparte de OrderItem para que cobrar
+// (que descuenta líneas de la cuenta) no borre pedidos que aún se están cocinando.
+model KitchenItem {
+  id        Int       @id @default(autoincrement())
+  orderId   Int
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId Int
+  product   Product   @relation(fields: [productId], references: [id])
+  quantity  Int       @default(1)
+  status    String    @default("PENDING") // PENDING → READY → SERVED
+  createdAt DateTime  @default(now())
+  readyAt   DateTime?
+
+  @@index([status])
 }
 
 model Payment {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Armchair, LayoutDashboard, LogOut, Store, UsersRound, UtensilsCrossed, Wallet } from "lucide-react";
+import { Armchair, ChefHat, LayoutDashboard, LogOut, Store, UsersRound, UtensilsCrossed, Wallet } from "lucide-react";
 import { logoutAdmin } from "@/app/actions";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +58,12 @@ export function AdminSidebar({ business }: { business: string }) {
           className="flex items-center gap-3 h-11 px-3 rounded-xl text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-white"
         >
           <Store className="size-5" /> Ir al punto de venta
+        </Link>
+        <Link
+          href="/cocina"
+          className="flex items-center gap-3 h-11 px-3 rounded-xl text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-white"
+        >
+          <ChefHat className="size-5" /> Pantalla de cocina
         </Link>
         <form action={logoutAdmin}>
           <button
