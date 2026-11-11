@@ -65,12 +65,12 @@ export function FloorPlan({
   const guests = tables.filter((t) => t.occupied).reduce((s, t) => s + t.seats, 0);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Resumen rápido */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="flex items-stretch rounded-xl bg-ink-900 border border-ink-800 divide-x divide-ink-800 text-sm overflow-hidden">
         <Stat label="Libres" value={String(free)} dot="bg-emerald-400" />
         <Stat label="Ocupadas" value={String(busy)} dot="bg-primary" hint={guests ? `${guests} puestos` : undefined} />
-        <Stat label="Por cobrar" value={formatMoney(pendingTotal)} />
+        <Stat label="Por cobrar" value={formatMoney(pendingTotal)} strong />
       </div>
 
       {/* Para llevar */}
@@ -78,7 +78,7 @@ export function FloorPlan({
         <Link
           href={`/mesa/${counter.id}`}
           className={cn(
-            "flex items-center gap-4 rounded-2xl border p-4 transition-all active:scale-[0.99]",
+            "flex items-center gap-3 rounded-xl border px-3 py-2 transition-all active:scale-[0.99]",
             counter.occupied
               ? "bg-primary/15 border-primary/40 hover:bg-primary/20"
               : "bg-ink-900 border-ink-800 hover:border-ink-600"
@@ -86,24 +86,24 @@ export function FloorPlan({
         >
           <span
             className={cn(
-              "size-12 rounded-xl grid place-items-center shrink-0",
+              "size-9 rounded-lg grid place-items-center shrink-0",
               counter.occupied ? "bg-primary text-primary-foreground" : "bg-white/5 text-ink-300"
             )}
           >
-            <ShoppingBag className="size-6" />
+            <ShoppingBag className="size-5" />
           </span>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold">Para llevar / Mostrador</p>
-            <p className="text-sm text-ink-400 truncate">
+          <div className="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-2">
+            <p className="font-semibold text-sm">Para llevar</p>
+            <p className="text-xs text-ink-400 truncate">
               {counter.occupied
                 ? `${counter.items} producto${counter.items === 1 ? "" : "s"} · ${formatMoney(counter.total)}`
                 : "Venta rápida sin mesa"}
             </p>
-            {counter.ready > 0 && <ReadyBadge count={counter.ready} className="mt-1.5" />}
+            {counter.ready > 0 && <ReadyBadge count={counter.ready} />}
           </div>
           <span
             className={cn(
-              "h-11 px-4 sm:px-5 rounded-xl text-sm font-medium inline-flex items-center shrink-0",
+              "h-9 px-3 sm:px-4 rounded-lg text-sm font-medium inline-flex items-center shrink-0",
               counter.occupied ? "bg-primary text-primary-foreground" : "bg-white text-ink-900"
             )}
           >
@@ -115,7 +115,7 @@ export function FloorPlan({
           type="button"
           disabled={pending}
           onClick={() => startTransition(() => enableCounter())}
-          className="w-full flex items-center gap-3 rounded-2xl border border-dashed border-ink-700 p-4 text-left text-ink-400 hover:text-white hover:border-primary/60 transition-colors"
+          className="w-full flex items-center gap-3 rounded-xl border border-dashed border-ink-700 px-3 py-2.5 text-left text-ink-400 hover:text-white hover:border-primary/60 transition-colors"
         >
           <Plus className="size-5" />
           <span className="text-sm font-medium">Habilitar ventas para llevar / mostrador</span>
@@ -377,15 +377,27 @@ function ReadyBadge({ count, className }: { count: number; className?: string })
   );
 }
 
-function Stat({ label, value, dot, hint }: { label: string; value: string; dot?: string; hint?: string }) {
+/** Indicador compacto en una sola línea, para dejar el espacio al plano. */
+function Stat({
+  label,
+  value,
+  dot,
+  hint,
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  dot?: string;
+  hint?: string;
+  strong?: boolean;
+}) {
   return (
-    <div className="rounded-2xl bg-ink-900 border border-ink-800 px-3 py-3 sm:px-4">
-      <p className="text-xs text-ink-400 flex items-center gap-1.5">
-        {dot && <span className={cn("size-2 rounded-full", dot)} />}
-        {label}
-      </p>
-      <p className="text-lg sm:text-2xl font-semibold tabular mt-0.5 truncate">{value}</p>
-      {hint && <p className="text-[11px] text-ink-500 truncate">{hint}</p>}
+    <div className={cn("flex-1 min-w-0 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 h-11")}>
+      {dot && <span className={cn("size-2 rounded-full shrink-0", dot)} />}
+      <span className="text-ink-400 truncate hidden sm:inline">{label}</span>
+      <span className={cn("font-semibold tabular truncate", strong && "text-primary")}>{value}</span>
+      <span className="text-ink-400 truncate sm:hidden">{label.toLowerCase()}</span>
+      {hint && <span className="text-xs text-ink-500 truncate hidden md:inline">· {hint}</span>}
     </div>
   );
 }
