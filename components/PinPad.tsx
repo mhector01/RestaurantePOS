@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Delete, Loader2 } from "lucide-react";
+import { ArrowLeft, ChefHat, Delete, Loader2, Settings } from "lucide-react";
 import { loginWaiter } from "@/app/actions";
 import { BrandLogo } from "@/components/Brand";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,8 @@ interface Props {
   title?: string;
   subtitle?: string;
   onSuccess?: () => void;
+  /** Pantalla de inicio bloqueada: en vez de "Volver", muestra accesos a cocina y administración. */
+  lockScreen?: boolean;
 }
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
@@ -24,6 +26,7 @@ export function PinPad({
   title = "¿Quién atiende?",
   subtitle = "Ingresa tu PIN de 4 dígitos",
   onSuccess,
+  lockScreen = false,
 }: Props) {
   const router = useRouter();
   const [pin, setPin] = useState("");
@@ -158,12 +161,29 @@ export function PinPad({
 
   return (
     <div className="min-h-dvh bg-ink-950 flex flex-col p-4">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-2 text-ink-400 hover:text-white text-sm font-medium h-11 px-2 self-start"
-      >
-        <ArrowLeft className="size-5" /> Volver a mesas
-      </Link>
+      {lockScreen ? (
+        <div className="flex justify-end gap-2">
+          <Link
+            href="/cocina"
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-full border border-white/10 bg-white/5 text-ink-300 hover:text-white text-sm font-medium"
+          >
+            <ChefHat className="size-4" /> Cocina
+          </Link>
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-full border border-white/10 bg-white/5 text-ink-300 hover:text-white text-sm font-medium"
+          >
+            <Settings className="size-4" /> Administración
+          </Link>
+        </div>
+      ) : (
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-ink-400 hover:text-white text-sm font-medium h-11 px-2 self-start"
+        >
+          <ArrowLeft className="size-5" /> Volver a mesas
+        </Link>
+      )}
       <div className="flex-1 flex flex-col items-center justify-center gap-8 pb-10">
         <BrandLogo className="h-12 sm:h-14" priority />
         {pad}

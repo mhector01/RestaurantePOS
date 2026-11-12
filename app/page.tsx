@@ -7,6 +7,7 @@ import { normalizeShape } from "@/lib/floor";
 import { BUSINESS } from "@/lib/config";
 import { FloorPlan, type FloorTable } from "@/components/pos/FloorPlan";
 import { WaiterChip } from "@/components/pos/WaiterChip";
+import { PinPad } from "@/components/PinPad";
 import { AutoRefresh } from "@/components/pos/AutoRefresh";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,9 @@ export default async function Home() {
   const waiter = waiterId
     ? await prisma.user.findUnique({ where: { id: parseInt(waiterId) } })
     : null;
+
+  // Sin mesero identificado no se muestra el plano: primero se pide el PIN.
+  if (!waiter) return <PinPad lockScreen />;
 
   const readyRows = await prisma.kitchenItem.findMany({
     where: { status: "READY" },
@@ -70,7 +74,7 @@ export default async function Home() {
           <div className="flex-1 min-w-0">
             <BrandHeader business={BUSINESS.name} subtitle="Punto de venta" />
           </div>
-          <WaiterChip name={waiter?.name ?? null} dark />
+          <WaiterChip name={waiter.name} dark />
           <Link
             href="/cocina"
             aria-label="Pantalla de cocina"
