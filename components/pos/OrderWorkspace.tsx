@@ -70,6 +70,8 @@ interface Props {
   closed?: React.ReactNode;
   /** Productos con algún insumo agotado según el inventario (se avisa, pero se pueden vender). */
   soldOut?: number[];
+  /** Facturación con CAI activa. */
+  invoicing?: boolean;
 }
 
 type OptimisticAction =
@@ -112,6 +114,7 @@ export function OrderWorkspace({
   takeout = false,
   closed,
   soldOut = [],
+  invoicing = false,
 }: Props) {
   const soldOutSet = useMemo(() => new Set(soldOut), [soldOut]);
   const router = useRouter();
@@ -406,6 +409,7 @@ export function OrderWorkspace({
 
   const checkoutDialog = checkoutOrderId && (
     <CheckoutDialog
+      invoicing={invoicing}
       open={checkout.open}
       onOpenChange={(v) => setCheckout((c) => ({ ...c, open: v }))}
       initialMode={checkout.mode}

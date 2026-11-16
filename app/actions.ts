@@ -8,6 +8,8 @@ import { normalizeShape } from "@/lib/floor";
 import { ADMIN_COOKIE, adminToken, getAdminPassword, isValidAdminToken } from "@/lib/auth";
 import { consumeForSale } from "@/lib/stock";
 import { expandSoldLines, loadCombo, partsLabel, resolveCombo, type ComboSelection } from "@/lib/combos";
+import { buildInvoiceLines, issueInvoice, type SoldItem } from "@/lib/invoicing";
+import { normalizeRtn, normalizeTaxRate } from "@/lib/fiscal";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
 /** Cookie "Secure" solo si la petición llegó por HTTPS (detrás del proxy de Coolify se ve en x-forwarded-proto). */
@@ -358,6 +360,18 @@ function saleNote(order: { id: number; name: string | null; table: { number: num
   return `Mesa ${order.table.number}${order.name ? ` · ${order.name}` : ""}`;
 }
 
+/** Datos del cliente para la factura (RTN opcional; sin él va a "Consumidor final"). */
+export type InvoiceCustomer = { name?: string; rtn?: string } | undefined;
+
+function cleanCustomer(customer: InvoiceCustomer) {
+  if (!customer) return undefined;
+  const rtnRaw = (customer.rtn ?? "").trim();
+  const rtn = rtnRaw ? normalizeRtn(rtnRaw) : null;
+  if (rtnRaw && !rtn) throw new Error("RTN inválido");
+  const name = (customer.name ?? "").replace(/\s+/g, " ").trim().slice(0, 100);
+  return { rtn, name: name || undefined };
+}
+
 /**
  * Cobra solo las unidades seleccionadas (cuenta dividida).
  */
@@ -365,8 +379,11 @@ export async function processProductPayment(
   orderId: number,
   mesaId: number,
   itemsToPay: { id: number; quantity: number }[],
-  method: string
+  method: string,
+  customer?: InvoiceCustomer
 ) {
+  const invoiceCustomer = cleanCustomer(customer);
+  const soldItems: SoldItem[] = [];
   let totalAmountToPay = 0;
   const ticketItems = [];
   const soldLines: { productId: number; quantity: number; parts?: { productId: number; quantity: number }[] }[] = [];
@@ -382,6 +399,14 @@ export async function processProductPayment(
     totalAmountToPay += originalItem.price * qty;
 
     soldLines.push({ productId: originalItem.productId, quantity: qty, parts: originalItem.parts });
+    soldItems.push({
+      productId: originalItem.productId,
+      name: originalItem.product.name,
+      quantity: qty,
+      price: originalItem.price,
+      detail: partsLabel(originalItem.parts) || null,
+      parts: originalItem.parts,
+    });
     ticketItems.push({
       id: originalItem.id,
       quantity: qty,
@@ -406,6 +431,13 @@ export async function processProductPayment(
   });
 
   await consumeForSale(orderId, expandSoldLines(soldLines), saleNote(newPayment.order));
+  const { invoice, warning: invoiceWarning } = await issueInvoice({
+    paymentId: newPayment.id,
+    orderId,
+    method,
+    lines: await buildInvoiceLines(soldItems),
+    customer: invoiceCustomer,
+  });
   revalidatePath("/admin", "layout");
 
   const remainingItems = await prisma.orderItem.count({ where: { orderId } });
@@ -419,13 +451,16 @@ export async function processProductPayment(
     ...newPayment,
     order: { ...newPayment.order, items: ticketItems },
     remainingItems,
+    invoice,
+    invoiceWarning,
   };
 }
 
 /**
  * Cobra todo lo pendiente de la cuenta y libera la mesa.
  */
-export async function processFullPayment(orderId: number, mesaId: number, method: string) {
+export async function processFullPayment(orderId: number, mesaId: number, method: string, customer?: InvoiceCustomer) {
+  const invoiceCustomer = cleanCustomer(customer);
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { items: { include: { product: true, parts: true } } },
@@ -449,6 +484,23 @@ export async function processFullPayment(orderId: number, mesaId: number, method
     saleNote(payment.order)
   );
 
+  const { invoice, warning: invoiceWarning } = await issueInvoice({
+    paymentId: payment.id,
+    orderId,
+    method,
+    lines: await buildInvoiceLines(
+      payment.order.items.map((i) => ({
+        productId: i.productId,
+        name: i.product.name,
+        quantity: i.quantity,
+        price: i.price,
+        detail: partsLabel(i.parts) || null,
+        parts: i.parts,
+      }))
+    ),
+    customer: invoiceCustomer,
+  });
+
   refreshTable(mesaId);
   revalidatePath("/admin", "layout");
   return {
@@ -458,6 +510,8 @@ export async function processFullPayment(orderId: number, mesaId: number, method
       items: payment.order.items.map((i) => ({ ...i, detail: partsLabel(i.parts) || null })),
     },
     remainingItems: 0,
+    invoice,
+    invoiceWarning,
   };
 }
 
@@ -547,10 +601,16 @@ export async function saveProduct(
   id: number | null,
   name: string,
   price: number,
-  categoryId: number
+  categoryId: number,
+  taxRate?: string
 ) {
   await requireAdmin();
-  const data = { name: name.trim(), price, category: { connect: { id: categoryId } } };
+  const data = {
+    name: name.trim(),
+    price,
+    category: { connect: { id: categoryId } },
+    ...(taxRate ? { taxRate: normalizeTaxRate(taxRate) } : {}),
+  };
   const saved = id ? await prisma.product.update({ where: { id }, data }) : await prisma.product.create({ data });
   revalidatePath("/admin/productos");
   revalidatePath("/");

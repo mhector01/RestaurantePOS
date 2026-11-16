@@ -47,6 +47,7 @@ model Product {
   id          Int         @id @default(autoincrement())
   name        String
   price       Float
+  taxRate     String      @default("15") // ISV: "15", "18" (alcohol y tabaco) o "EXENTO"
   
   // Relación con la tabla Category
   categoryId Int
@@ -151,6 +152,7 @@ model Payment {
   order     Order    @relation(fields: [orderId], references: [id])
   amount    Float    // Monto para dividir cuenta
   method    String   // CASH, CARD, etc.
+  invoices  Invoice[]
   createdAt DateTime @default(now())
 }
 
@@ -256,4 +258,69 @@ model StockMovement {
 
   @@index([ingredientId, createdAt])
   @@index([type, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// FACTURACIÓN (Honduras, Régimen de Facturación SAR)
+// ---------------------------------------------------------------------------
+
+// Datos del obligado tributario. Una sola fila (id = 1).
+model FiscalSettings {
+  id          Int      @id @default(1)
+  enabled     Boolean  @default(false) // Emitir factura con CAI en cada cobro
+  legalName   String   @default("")    // Nombre o razón social
+  tradeName   String   @default("")    // Nombre comercial
+  rtn         String   @default("")
+  address     String   @default("")
+  phone       String   @default("")
+  email       String   @default("")
+  footer      String   @default("")    // Mensaje opcional al pie
+  updatedAt   DateTime @updatedAt
+}
+
+// Rango autorizado por la SAR para un CAI
+model InvoiceRange {
+  id            Int       @id @default(autoincrement())
+  cai           String
+  prefix        String    // "000-001-01": establecimiento, punto de emisión, tipo de documento
+  rangeFrom     Int
+  rangeTo       Int
+  nextNumber    Int       // Siguiente correlativo a usar
+  deadline      DateTime  // Fecha límite de emisión
+  active        Boolean   @default(true)
+  invoices      Invoice[]
+  createdAt     DateTime  @default(now())
+}
+
+model Invoice {
+  id           Int          @id @default(autoincrement())
+  number       String       @unique // 000-001-01-00000001
+  sequence     Int
+  rangeId      Int
+  range        InvoiceRange @relation(fields: [rangeId], references: [id])
+  paymentId    Int
+  payment      Payment      @relation(fields: [paymentId], references: [id])
+  orderId      Int
+  customerName String       @default("Consumidor final")
+  customerRtn  String?
+  // Desglose fiscal
+  exempt       Float        @default(0) // Importe exento
+  exonerated   Float        @default(0) // Importe exonerado
+  taxable15    Float        @default(0) // Importe gravado 15%
+  taxable18    Float        @default(0) // Importe gravado 18%
+  isv15        Float        @default(0)
+  isv18        Float        @default(0)
+  discount     Float        @default(0)
+  total        Float
+  method       String
+  lines        Json         // Copia de lo facturado: [{ name, detail, quantity, unitPrice, total, tax }]
+  issuer       Json         // Copia de los datos del emisor, CAI y rango al momento de emitir
+  status       String       @default("ISSUED") // ISSUED o VOID
+  voidReason   String?
+  voidedAt     DateTime?
+  replacedById Int?         // Si se anuló para reemitirla con otros datos
+  createdAt    DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([paymentId])
 }

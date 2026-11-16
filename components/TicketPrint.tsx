@@ -2,6 +2,8 @@
 
 import { createPortal } from "react-dom";
 import { BUSINESS, PAYMENT_LABEL, formatMoney } from "@/lib/config";
+import { InvoiceBody } from "@/components/InvoicePrint";
+import type { InvoiceView } from "@/lib/fiscal";
 
 export interface TicketPayment {
   id: number;
@@ -14,6 +16,8 @@ export interface TicketPayment {
     table: { number: number };
     items: { id: number; quantity: number; price: number; product: { name: string }; detail?: string | null }[];
   };
+  /** Factura con CAI, si la facturación está activa. */
+  invoice?: InvoiceView | null;
 }
 
 /**
@@ -33,6 +37,15 @@ export function TicketPrint({
   if (typeof document === "undefined") return null;
 
   const mesa = payment.order.table.number;
+  if (payment.invoice) {
+    const reference = mesa === 0 ? `Para llevar · Pedido #${payment.order.id ?? ""}` : `Mesa ${mesa}`;
+    return createPortal(
+      <div className="print-area hidden print:block">
+        <InvoiceBody invoice={{ ...payment.invoice, reference }} received={received} change={change} />
+      </div>,
+      document.body
+    );
+  }
   return createPortal(
     <div className="print-area hidden print:block bg-white text-black font-mono text-[11px] leading-snug">
       <div className="text-center pb-2 mb-2 border-b border-dashed border-black">

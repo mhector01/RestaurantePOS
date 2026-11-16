@@ -9,6 +9,7 @@ import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { formatElapsed } from "@/lib/config";
 import { outOfStockProductIds } from "@/lib/stock";
 import { partsLabel } from "@/lib/combos";
+import { getFiscalSettings } from "@/lib/invoicing";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -23,7 +24,7 @@ interface Props {
 export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter }: Props) {
   const takeout = takeoutOrderId !== undefined;
 
-  const [productos, categorias, order, soldOut] = await Promise.all([
+  const [productos, categorias, order, soldOut, fiscal] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -43,6 +44,7 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
       },
     }),
     outOfStockProductIds(),
+    getFiscalSettings(),
   ]);
 
   // Mesas: lo de cocina de cualquier cuenta de la mesa (puede haber algo listo de una cuenta ya cobrada).
@@ -174,6 +176,7 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
         }))}
         paid={paid}
         soldOut={soldOut}
+        invoicing={fiscal.enabled}
       />
     </div>
   );

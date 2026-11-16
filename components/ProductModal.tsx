@@ -6,6 +6,7 @@ import { Boxes, Loader2, Pencil, Plus } from "lucide-react";
 import { createCategory, saveProduct } from "@/app/actions";
 import { setProductStockControl } from "@/app/inventory-actions";
 import { formatQty, parseQty } from "@/lib/inventory";
+import { TAX_RATES, normalizeTaxRate } from "@/lib/fiscal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,7 @@ interface Product {
   name: string;
   price: number;
   categoryId: number;
+  taxRate?: string;
 }
 /** Cómo se controla el stock del producto: reventa (1 unidad por venta) o con receta propia. */
 export type StockInfo =
@@ -50,6 +52,7 @@ export function ProductModal({
   const [localCats, setLocalCats] = useState<Category[]>(categories);
   const [newCat, setNewCat] = useState("");
   const [creatingCat, setCreatingCat] = useState(false);
+  const [taxRate, setTaxRate] = useState("15");
   const [track, setTrack] = useState(false);
   const [minStock, setMinStock] = useState("");
   const [maxStock, setMaxStock] = useState("");
@@ -62,6 +65,7 @@ export function ProductModal({
     setLocalCats(categories);
     setNewCat("");
     setCreatingCat(false);
+    setTaxRate(normalizeTaxRate(product?.taxRate));
     setTrack(stock?.mode === "resale");
     setMinStock(stock?.mode === "resale" && stock.minStock ? String(stock.minStock) : "");
     setMaxStock(stock?.mode === "resale" && stock.maxStock ? String(stock.maxStock) : "");
@@ -89,7 +93,7 @@ export function ProductModal({
     }
     setLoading(true);
     try {
-      const saved = await saveProduct(product?.id ?? null, name, value, categoryId);
+      const saved = await saveProduct(product?.id ?? null, name, value, categoryId, taxRate);
       const wasTracked = stock?.mode === "resale";
       if (track) {
         await setProductStockControl(saved.id, { minStock: min, maxStock: max, initialStock: parseQty(initial || "0") || 0 });
@@ -214,6 +218,29 @@ export function ProductModal({
                 </Button>
               </div>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Impuesto (ISV)</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {TAX_RATES.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setTaxRate(t.value)}
+                  title={t.hint}
+                  className={cn(
+                    "h-10 rounded-xl border text-sm font-medium transition-colors",
+                    taxRate === t.value ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              El precio incluye el impuesto. {TAX_RATES.find((t) => t.value === taxRate)?.hint}.
+            </p>
           </div>
 
           {stock?.mode === "recipe" ? (

@@ -21,6 +21,7 @@ interface Product {
   name: string;
   price: number;
   categoryId: number;
+  taxRate: string;
   stock: StockInfo;
   /** Partes del combo; null si es un producto normal. */
   combo: { name: string; quantity: number; options: { productId: number; extraPrice: number }[] }[] | null;
@@ -124,6 +125,17 @@ export function ProductsManager({ products, categories }: { products: Product[];
                       </p>
                     )}
                   </div>
+                  {p.taxRate !== "15" && !p.combo && (
+                    <span
+                      className={cn(
+                        "text-[11px] font-semibold rounded-full px-2 py-0.5",
+                        p.taxRate === "18" ? "bg-violet-500/15 text-violet-300" : "bg-sky-500/15 text-sky-300"
+                      )}
+                      title="Tasa de ISV"
+                    >
+                      {p.taxRate === "18" ? "ISV 18%" : "Exento"}
+                    </span>
+                  )}
                   <p className="font-semibold tabular w-24 text-right">{formatMoney(p.price)}</p>
                   <div className="flex">
                     {p.combo ? (

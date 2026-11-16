@@ -3,13 +3,14 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Banknote, Check, CreditCard, Loader2, Minus, Plus, Printer } from "lucide-react";
+import { AlertTriangle, Banknote, Check, CreditCard, FileText, Loader2, Minus, Plus, Printer } from "lucide-react";
 import { processFullPayment, processProductPayment } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TicketPrint, type TicketPayment } from "@/components/TicketPrint";
 import { PAYMENT_LABEL, formatMoney } from "@/lib/config";
 import { cn } from "@/lib/utils";
+import { normalizeRtn } from "@/lib/fiscal";
 import type { OrderLine } from "./OrderWorkspace";
 
 type Mode = "full" | "split";
@@ -23,6 +24,8 @@ interface Props {
   mesaId: number;
   items: OrderLine[];
   takeout?: boolean;
+  /** Facturación con CAI activa: se pide (opcional) el RTN del cliente. */
+  invoicing?: boolean;
 }
 
 /** Sugerencias de billetes para el efectivo recibido. */
@@ -37,14 +40,26 @@ function cashSuggestions(total: number) {
   return [...out];
 }
 
-export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaId, items, takeout = false }: Props) {
+export function CheckoutDialog({
+  open,
+  onOpenChange,
+  initialMode,
+  orderId,
+  mesaId,
+  items,
+  takeout = false,
+  invoicing = false,
+}: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [method, setMethod] = useState<Method>("CASH");
   const [qty, setQty] = useState<Record<number, number>>({});
   const [received, setReceived] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<(TicketPayment & { remainingItems: number }) | null>(null);
+  const [result, setResult] = useState<(TicketPayment & { remainingItems: number; invoiceWarning?: string }) | null>(null);
+  const [withRtn, setWithRtn] = useState(false);
+  const [rtn, setRtn] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [paidInfo, setPaidInfo] = useState<{ received: number; change: number } | null>(null);
 
   // Reinicia el estado cada vez que se abre
@@ -58,6 +73,9 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
       setReceived("");
       setResult(null);
       setPaidInfo(null);
+      setWithRtn(false);
+      setRtn("");
+      setCustomerName("");
     }
   }
 
@@ -72,23 +90,31 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
   const setLine = (id: number, max: number, value: number) =>
     setQty((p) => ({ ...p, [id]: Math.max(0, Math.min(max, value)) }));
 
+  const rtnInvalid = withRtn && rtn.trim() !== "" && !normalizeRtn(rtn);
+  const missingName = withRtn && normalizeRtn(rtn) !== null && !customerName.trim();
+
   const pay = async () => {
     if (total <= 0) return;
+    if (withRtn && (rtnInvalid || !normalizeRtn(rtn))) return toast.error("El RTN debe tener 14 dígitos");
+    if (missingName) return toast.error("Escribe el nombre o razón social del cliente");
+    const customer = withRtn ? { rtn, name: customerName } : undefined;
     setLoading(true);
     try {
       const res =
         mode === "full"
-          ? await processFullPayment(orderId, mesaId, method)
+          ? await processFullPayment(orderId, mesaId, method, customer)
           : await processProductPayment(
               orderId,
               mesaId,
               Object.entries(qty)
                 .filter(([, q]) => q > 0)
                 .map(([id, q]) => ({ id: Number(id), quantity: q })),
-              method
+              method,
+              customer
             );
       if (!res) throw new Error("sin resultado");
-      setResult(res as unknown as TicketPayment & { remainingItems: number });
+      setResult(res as unknown as TicketPayment & { remainingItems: number; invoiceWarning?: string });
+      if (res.invoiceWarning) toast.warning(res.invoiceWarning, { duration: 8000 });
       setPaidInfo({ received: receivedNum, change: Math.max(0, change) });
     } catch (e) {
       console.error(e);
@@ -126,6 +152,16 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
             <DialogDescription className="mt-1">
               {formatMoney(result.amount)} · {PAYMENT_LABEL[result.method] ?? result.method}
             </DialogDescription>
+            {result.invoice && (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-sm font-medium tabular">
+                <FileText className="size-4 text-primary" /> Factura {result.invoice.number}
+              </p>
+            )}
+            {result.invoiceWarning && (
+              <p className="mt-3 w-full rounded-xl bg-red-500/10 text-red-300 text-sm p-3 flex gap-2 text-left">
+                <AlertTriangle className="size-4 shrink-0 mt-0.5" /> {result.invoiceWarning}
+              </p>
+            )}
 
             {paidInfo && paidInfo.received > 0 && method === "CASH" && (
               <div className="mt-5 w-full rounded-2xl bg-muted p-4">
@@ -255,6 +291,51 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
                   ))}
                 </div>
               </div>
+
+              {/* Factura a nombre de un cliente con RTN */}
+              {invoicing && (
+                <div className="rounded-2xl border p-3 space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={withRtn}
+                      onChange={(e) => setWithRtn(e.target.checked)}
+                      className="size-5 accent-[var(--primary)]"
+                    />
+                    <span className="flex-1">
+                      <span className="block text-sm font-medium">Factura con RTN</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {withRtn ? "Datos del cliente para la factura" : "Si no, sale a nombre de Consumidor final"}
+                      </span>
+                    </span>
+                  </label>
+                  {withRtn && (
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <div>
+                        <input
+                          inputMode="numeric"
+                          value={rtn}
+                          onChange={(e) => setRtn(e.target.value.replace(/[^\d-]/g, "").slice(0, 16))}
+                          placeholder="RTN (14 dígitos)"
+                          aria-label="RTN del cliente"
+                          className={cn(
+                            "w-full h-11 rounded-xl border bg-card px-3 tabular outline-none focus:border-primary",
+                            rtnInvalid && "border-destructive"
+                          )}
+                        />
+                        {rtnInvalid && <p className="text-xs text-destructive mt-1">Deben ser 14 dígitos</p>}
+                      </div>
+                      <input
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Nombre o razón social"
+                        aria-label="Nombre o razón social del cliente"
+                        className="w-full h-11 rounded-xl border bg-card px-3 outline-none focus:border-primary"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Calculadora de cambio */}
               {method === "CASH" && total > 0 && (

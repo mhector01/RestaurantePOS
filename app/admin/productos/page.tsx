@@ -26,6 +26,7 @@ export default async function ProductosPage() {
     name: p.name,
     price: p.price,
     categoryId: p.categoryId,
+    taxRate: p.taxRate,
     // Reventa = receta de 1 sola unidad de un insumo; con otra receta, se controla desde Inventario → Recetas
     stock:
       p.recipe.length === 1 && p.recipe[0].quantity === 1

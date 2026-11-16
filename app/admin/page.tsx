@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/admin/AdminNav";
 import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { formatElapsed, formatMoney } from "@/lib/config";
 import { formatQty, stockLevel } from "@/lib/inventory";
+import { fiscalStatus } from "@/lib/invoicing";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ function greeting() {
 }
 
 export default async function AdminDashboard() {
-  const [ventas, openOrders, tableCount, ingredients] = await Promise.all([
+  const [ventas, openOrders, tableCount, ingredients, fiscal] = await Promise.all([
     getDailySales(),
     prisma.order.findMany({
       where: { status: "OPEN", items: { some: {} } },
@@ -30,6 +31,7 @@ export default async function AdminDashboard() {
       select: { id: true, name: true, unit: true, stock: true, minStock: true },
       orderBy: { stock: "asc" },
     }),
+    fiscalStatus(),
   ]);
   const lowStock = ingredients.filter((i) => stockLevel(i.stock, i.minStock) !== "ok");
 
@@ -55,6 +57,22 @@ export default async function AdminDashboard() {
         <Kpi label="Ticket promedio" value={formatMoney(avg)} Icon={Receipt} />
         <Kpi label="Por cobrar ahora" value={formatMoney(pending)} Icon={Clock} />
       </div>
+
+      {/* Alertas de facturación (CAI por vencer o agotarse) */}
+      {fiscal.alerts.map((a) => (
+        <Link
+          key={a.message}
+          href="/admin/facturacion/rangos"
+          className={
+            a.level === "error"
+              ? "mt-4 flex items-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200"
+              : "mt-4 flex items-center gap-2 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 text-sm text-amber-100"
+          }
+        >
+          <AlertTriangle className="size-4 shrink-0" /> <span className="flex-1">{a.message}</span>
+          <ArrowRight className="size-4 shrink-0" />
+        </Link>
+      ))}
 
       {/* Alerta de inventario */}
       {lowStock.length > 0 && (
