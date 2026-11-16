@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus } from "lucide-react";
+import { Boxes, Loader2, Pencil, Plus } from "lucide-react";
 import { createCategory, saveProduct } from "@/app/actions";
+import { setProductStockControl } from "@/app/inventory-actions";
+import { formatQty, parseQty } from "@/lib/inventory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,13 +23,20 @@ interface Product {
   price: number;
   categoryId: number;
 }
+/** Cómo se controla el stock del producto: reventa (1 unidad por venta) o con receta propia. */
+export type StockInfo =
+  | { mode: "resale"; stock: number; minStock: number; maxStock: number | null }
+  | { mode: "recipe" }
+  | null;
 
 export function ProductModal({
   product,
   categories,
   defaultCategoryId,
   compact = false,
+  stock = null,
 }: {
+  stock?: StockInfo;
   product?: Product;
   categories: Category[];
   defaultCategoryId?: number;
@@ -41,6 +50,10 @@ export function ProductModal({
   const [localCats, setLocalCats] = useState<Category[]>(categories);
   const [newCat, setNewCat] = useState("");
   const [creatingCat, setCreatingCat] = useState(false);
+  const [track, setTrack] = useState(false);
+  const [minStock, setMinStock] = useState("");
+  const [maxStock, setMaxStock] = useState("");
+  const [initial, setInitial] = useState("");
 
   const reset = () => {
     setName(product?.name ?? "");
@@ -49,6 +62,10 @@ export function ProductModal({
     setLocalCats(categories);
     setNewCat("");
     setCreatingCat(false);
+    setTrack(stock?.mode === "resale");
+    setMinStock(stock?.mode === "resale" && stock.minStock ? String(stock.minStock) : "");
+    setMaxStock(stock?.mode === "resale" && stock.maxStock ? String(stock.maxStock) : "");
+    setInitial("");
   };
 
   const addCategory = async () => {
@@ -65,9 +82,20 @@ export function ProductModal({
     const value = parseFloat(price);
     if (!categoryId) return toast.error("Elige una categoría");
     if (Number.isNaN(value) || value < 0) return toast.error("Precio no válido");
+    const min = parseQty(minStock || "0");
+    const max = maxStock ? parseQty(maxStock) : null;
+    if (track && (Number.isNaN(min) || min < 0 || (max !== null && Number.isNaN(max)))) {
+      return toast.error("Revisa las cantidades de inventario");
+    }
     setLoading(true);
     try {
-      await saveProduct(product?.id ?? null, name, value, categoryId);
+      const saved = await saveProduct(product?.id ?? null, name, value, categoryId);
+      const wasTracked = stock?.mode === "resale";
+      if (track) {
+        await setProductStockControl(saved.id, { minStock: min, maxStock: max, initialStock: parseQty(initial || "0") || 0 });
+      } else if (wasTracked) {
+        await setProductStockControl(saved.id, null);
+      }
       toast.success(product ? "Producto actualizado" : "Producto agregado");
       setOpen(false);
     } catch {
@@ -188,6 +216,40 @@ export function ProductModal({
             )}
           </div>
 
+          {stock?.mode === "recipe" ? (
+            <p className="rounded-xl border bg-muted/40 p-3 text-sm text-muted-foreground flex gap-2">
+              <Boxes className="size-4 mt-0.5 shrink-0" />
+              Su inventario se controla con la receta (Inventario → Recetas).
+            </p>
+          ) : (
+            <div className="rounded-2xl border p-3 space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={track}
+                  onChange={(e) => setTrack(e.target.checked)}
+                  className="mt-1 size-5 accent-[var(--primary)]"
+                />
+                <span className="flex-1">
+                  <span className="block font-medium text-sm">Controlar stock (se vende tal como se compra)</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Gaseosas, cervezas, agua, snacks… Cada venta descuenta 1 unidad y avisa cuando hay que comprar.
+                    {stock?.mode === "resale" && ` Hay ${formatQty(stock.stock, "unid")}.`}
+                  </span>
+                </span>
+              </label>
+              {track && (
+                <div className="grid grid-cols-3 gap-2">
+                  {stock?.mode !== "resale" && (
+                    <StockInput id="p-initial" label="Hay ahora" value={initial} onChange={setInitial} />
+                  )}
+                  <StockInput id="p-min" label="Avisar al llegar a" value={minStock} onChange={setMinStock} />
+                  <StockInput id="p-max" label="Stock ideal" value={maxStock} onChange={setMaxStock} />
+                </div>
+              )}
+            </div>
+          )}
+
           <Button type="submit" className="w-full h-12 rounded-xl text-base" disabled={loading || creatingCat}>
             {loading && <Loader2 className="animate-spin" />}
             {product ? "Guardar cambios" : "Agregar al menú"}
@@ -195,5 +257,26 @@ export function ProductModal({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function StockInput({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1 min-w-0">
+      <Label htmlFor={id} className="text-xs">
+        {label}
+      </Label>
+      <div className="relative">
+        <Input
+          id={id}
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/[^\d.,]/g, ""))}
+          placeholder="0"
+          className="h-11 rounded-xl pr-11 tabular font-semibold"
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">unid</span>
+      </div>
+    </div>
   );
 }

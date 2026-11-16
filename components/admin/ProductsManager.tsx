@@ -5,7 +5,9 @@ import { ChefHat, Search, Trash2, X } from "lucide-react";
 import { deleteCategory, deleteProduct, setCategoryKitchen } from "@/app/actions";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ProductModal } from "@/components/ProductModal";
+import { ProductModal, type StockInfo } from "@/components/ProductModal";
+import { formatQty, stockLevel } from "@/lib/inventory";
+import { ComboDialog } from "@/components/admin/ComboDialog";
 import { ConfirmAction } from "@/components/pos/ConfirmAction";
 import { formatMoney } from "@/lib/config";
 
@@ -19,11 +21,16 @@ interface Product {
   name: string;
   price: number;
   categoryId: number;
+  stock: StockInfo;
+  /** Partes del combo; null si es un producto normal. */
+  combo: { name: string; quantity: number; options: { productId: number; extraPrice: number }[] }[] | null;
 }
 
 export function ProductsManager({ products, categories }: { products: Product[]; categories: Category[] }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
+  const nameOf = new Map(products.map((p) => [p.id, p.name]));
+  const components = products.filter((p) => !p.combo).map(({ id, name, price, categoryId }) => ({ id, name, price, categoryId }));
 
   const groups = categories
     .map((c) => ({
@@ -95,10 +102,39 @@ export function ProductsManager({ products, categories }: { products: Product[];
             <ul className="divide-y">
               {items.map((p) => (
                 <li key={p.id} className="flex items-center gap-3 pl-5 pr-2 py-2.5">
-                  <p className="flex-1 min-w-0 font-medium truncate">{p.name}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">
+                      {p.name}
+                      {p.combo && (
+                        <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-primary/15 text-primary">
+                          Combo
+                        </span>
+                      )}
+                      {p.stock?.mode === "resale" && <StockChip stock={p.stock} />}
+                    </p>
+                    {p.combo && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {p.combo
+                          .map((s) =>
+                            s.options.length === 1
+                              ? `${s.quantity > 1 ? `${s.quantity}× ` : ""}${nameOf.get(s.options[0].productId) ?? "?"}`
+                              : `${s.name} a elegir (${s.options.length})`
+                          )
+                          .join(" + ")}
+                      </p>
+                    )}
+                  </div>
                   <p className="font-semibold tabular w-24 text-right">{formatMoney(p.price)}</p>
                   <div className="flex">
-                    <ProductModal product={p} categories={categories} />
+                    {p.combo ? (
+                      <ComboDialog
+                        combo={{ id: p.id, name: p.name, price: p.price, categoryId: p.categoryId, slots: p.combo }}
+                        products={components}
+                        categories={categories}
+                      />
+                    ) : (
+                      <ProductModal product={p} categories={categories} stock={p.stock} />
+                    )}
                     <ConfirmAction
                       title={`¿Eliminar "${p.name}"?`}
                       description="Dejará de aparecer en el menú. Si ya tiene ventas registradas no se podrá eliminar."
@@ -123,6 +159,22 @@ export function ProductsManager({ products, categories }: { products: Product[];
         </section>
       ))}
     </div>
+  );
+}
+
+/** Existencias de un producto de reventa (gaseosa, cerveza…). */
+function StockChip({ stock }: { stock: Extract<StockInfo, { mode: "resale" }> }) {
+  const lvl = stockLevel(stock.stock, stock.minStock);
+  return (
+    <span
+      className={cn(
+        "ml-2 align-middle text-[11px] font-medium rounded-full px-2 py-0.5 tabular",
+        lvl === "out" ? "bg-red-500/15 text-red-300" : lvl === "low" ? "bg-amber-400/15 text-amber-200" : "bg-muted text-muted-foreground"
+      )}
+      title="Existencias en inventario"
+    >
+      {lvl === "out" ? "Agotado" : `${formatQty(stock.stock)} en stock`}
+    </span>
   );
 }
 

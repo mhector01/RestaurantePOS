@@ -34,8 +34,9 @@ export default async function NuevaCompraPage({
       ? ingredients
           .filter((i) => (supplierId ? i.supplierId === supplierId : i.supplierId === null))
           .filter((i) => stockLevel(i.stock, i.minStock) !== "ok")
-          .map((i) => ({ ingredientId: i.id, quantity: suggestedOrder(i.stock, i.minStock, i.maxStock) }))
-          .filter((l) => l.quantity > 0)
+          .map((i) => ({ ingredientId: i.id, quantity: suggestedOrder(i.stock, i.minStock, i.maxStock), out: i.stock <= 0 }))
+          .filter((l) => l.quantity > 0 || l.out)
+          .map(({ ingredientId, quantity }) => ({ ingredientId, quantity }))
       : [];
 
   return (

@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { normalizeShape } from "@/lib/floor";
 import { ADMIN_COOKIE, adminToken, getAdminPassword, isValidAdminToken } from "@/lib/auth";
 import { consumeForSale } from "@/lib/stock";
+import { expandSoldLines, loadCombo, partsLabel, resolveCombo, type ComboSelection } from "@/lib/combos";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
 /** Cookie "Secure" solo si la petición llegó por HTTPS (detrás del proxy de Coolify se ve en x-forwarded-proto). */
@@ -54,6 +55,25 @@ async function kitchenRemove(orderId: number, productId: number, qty: number) {
     await prisma.kitchenItem.update({ where: { id: pending.id }, data: { quantity: pending.quantity - qty } });
   } else {
     await prisma.kitchenItem.delete({ where: { id: pending.id } });
+  }
+}
+
+type KitchenLine = { productId: number; parts?: { productId: number; quantity: number }[] };
+
+/** Manda a cocina una línea: si es combo, van sus partes (lo que hay que cocinar), no el combo. */
+async function kitchenAddLine(orderId: number, item: KitchenLine, qty = 1) {
+  if (item.parts && item.parts.length > 0) {
+    for (const p of item.parts) await kitchenAdd(orderId, p.productId, p.quantity * qty);
+  } else {
+    await kitchenAdd(orderId, item.productId, qty);
+  }
+}
+
+async function kitchenRemoveLine(orderId: number, item: KitchenLine, qty = 1) {
+  if (item.parts && item.parts.length > 0) {
+    for (const p of item.parts) await kitchenRemove(orderId, p.productId, p.quantity * qty);
+  } else {
+    await kitchenRemove(orderId, item.productId, qty);
   }
 }
 
@@ -130,12 +150,29 @@ async function settleEmptyOrder(orderId: number, mesaId: number) {
  * Agrega una unidad de un producto a la comanda de la mesa.
  * Si el producto ya está en la comanda, suma la cantidad en lugar de crear otra línea.
  */
-export async function addProductToOrder(tableId: number, productId: number, orderId?: number) {
+export async function addProductToOrder(
+  tableId: number,
+  productId: number,
+  orderId?: number,
+  selection?: ComboSelection
+) {
   const cookieStore = await cookies();
   const waiterId = cookieStore.get("waiter_id")?.value;
 
-  const product = await prisma.product.findUnique({ where: { id: productId } });
+  const product = await loadCombo(productId);
   if (!product) return { error: "Producto no encontrado" };
+
+  // Combos: se valida lo elegido; el precio suma los recargos de las opciones
+  let parts: { productId: number; quantity: number; slotName: string }[] = [];
+  let price = product.price;
+  let variant = "";
+  if (product.isCombo) {
+    const resolved = resolveCombo(product, selection);
+    if ("error" in resolved) return { error: resolved.error };
+    parts = resolved.parts;
+    price = product.price + resolved.extra;
+    variant = resolved.variant;
+  }
 
   // Para llevar: cada pedido es independiente, así que se agrega a ese pedido en particular.
   let order = orderId
@@ -149,7 +186,7 @@ export async function addProductToOrder(tableId: number, productId: number, orde
   }
 
   const existing = await prisma.orderItem.findFirst({
-    where: { orderId: order.id, productId, price: product.price },
+    where: { orderId: order.id, productId, price, variant },
   });
 
   if (existing) {
@@ -159,11 +196,11 @@ export async function addProductToOrder(tableId: number, productId: number, orde
     });
   } else {
     await prisma.orderItem.create({
-      data: { orderId: order.id, productId, price: product.price },
+      data: { orderId: order.id, productId, price, variant, parts: { create: parts } },
     });
   }
 
-  await kitchenAdd(order.id, productId);
+  await kitchenAddLine(order.id, { productId, parts });
   await prisma.table.update({ where: { id: tableId }, data: { status: "OCCUPIED" } });
   refreshTable(tableId);
   return { success: true };
@@ -174,14 +211,15 @@ export async function incrementOrderItem(orderItemId: number, mesaId: number) {
   const item = await prisma.orderItem.update({
     where: { id: orderItemId },
     data: { quantity: { increment: 1 } },
+    include: { parts: true },
   });
-  await kitchenAdd(item.orderId, item.productId);
+  await kitchenAddLine(item.orderId, item);
   refreshTable(mesaId);
 }
 
 /** Resta una unidad de un producto. Si llega a cero, quita la línea. */
 export async function removeProductFromOrder(orderItemId: number, mesaId: number) {
-  const item = await prisma.orderItem.findUnique({ where: { id: orderItemId } });
+  const item = await prisma.orderItem.findUnique({ where: { id: orderItemId }, include: { parts: true } });
   if (!item) return;
 
   if (item.quantity > 1) {
@@ -192,7 +230,7 @@ export async function removeProductFromOrder(orderItemId: number, mesaId: number
   } else {
     await prisma.orderItem.delete({ where: { id: orderItemId } });
   }
-  await kitchenRemove(item.orderId, item.productId, 1);
+  await kitchenRemoveLine(item.orderId, item, 1);
 
   const remaining = await prisma.orderItem.count({ where: { orderId: item.orderId } });
   if (remaining === 0) await settleEmptyOrder(item.orderId, mesaId);
@@ -202,10 +240,10 @@ export async function removeProductFromOrder(orderItemId: number, mesaId: number
 
 /** Quita una línea completa de la comanda (todas sus unidades). */
 export async function deleteOrderItem(orderItemId: number, mesaId: number) {
-  const item = await prisma.orderItem.findUnique({ where: { id: orderItemId } });
+  const item = await prisma.orderItem.findUnique({ where: { id: orderItemId }, include: { parts: true } });
   if (!item) return;
   await prisma.orderItem.delete({ where: { id: orderItemId } });
-  await kitchenRemove(item.orderId, item.productId, item.quantity);
+  await kitchenRemoveLine(item.orderId, item, item.quantity);
 
   const remaining = await prisma.orderItem.count({ where: { orderId: item.orderId } });
   if (remaining === 0) await settleEmptyOrder(item.orderId, mesaId);
@@ -331,24 +369,25 @@ export async function processProductPayment(
 ) {
   let totalAmountToPay = 0;
   const ticketItems = [];
-  const soldLines: { productId: number; quantity: number }[] = [];
+  const soldLines: { productId: number; quantity: number; parts?: { productId: number; quantity: number }[] }[] = [];
 
   for (const itemRequest of itemsToPay) {
     const originalItem = await prisma.orderItem.findUnique({
       where: { id: itemRequest.id },
-      include: { product: true },
+      include: { product: true, parts: { include: { product: true } } },
     });
     if (!originalItem || itemRequest.quantity <= 0) continue;
 
     const qty = Math.min(itemRequest.quantity, originalItem.quantity);
     totalAmountToPay += originalItem.price * qty;
 
-    soldLines.push({ productId: originalItem.productId, quantity: qty });
+    soldLines.push({ productId: originalItem.productId, quantity: qty, parts: originalItem.parts });
     ticketItems.push({
       id: originalItem.id,
       quantity: qty,
       price: originalItem.price,
       product: { name: originalItem.product.name },
+      detail: partsLabel(originalItem.parts) || null,
     });
 
     if (originalItem.quantity <= qty) {
@@ -366,7 +405,7 @@ export async function processProductPayment(
     include: { order: { include: { table: true } } },
   });
 
-  await consumeForSale(orderId, soldLines, saleNote(newPayment.order));
+  await consumeForSale(orderId, expandSoldLines(soldLines), saleNote(newPayment.order));
   revalidatePath("/admin", "layout");
 
   const remainingItems = await prisma.orderItem.count({ where: { orderId } });
@@ -389,7 +428,7 @@ export async function processProductPayment(
 export async function processFullPayment(orderId: number, mesaId: number, method: string) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: { include: { product: true } } },
+    include: { items: { include: { product: true, parts: true } } },
   });
   if (!order || order.items.length === 0) return null;
 
@@ -398,7 +437,7 @@ export async function processFullPayment(orderId: number, mesaId: number, method
   const payment = await prisma.payment.create({
     data: { orderId, amount: total, method },
     include: {
-      order: { include: { table: true, items: { include: { product: true } } } },
+      order: { include: { table: true, items: { include: { product: true, parts: { include: { product: true } } } } } },
     },
   });
 
@@ -406,13 +445,20 @@ export async function processFullPayment(orderId: number, mesaId: number, method
   await prisma.table.update({ where: { id: mesaId }, data: { status: "FREE" } });
   await consumeForSale(
     orderId,
-    order.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+    expandSoldLines(order.items.map((i) => ({ productId: i.productId, quantity: i.quantity, parts: i.parts }))),
     saleNote(payment.order)
   );
 
   refreshTable(mesaId);
   revalidatePath("/admin", "layout");
-  return { ...payment, remainingItems: 0 };
+  return {
+    ...payment,
+    order: {
+      ...payment.order,
+      items: payment.order.items.map((i) => ({ ...i, detail: partsLabel(i.parts) || null })),
+    },
+    remainingItems: 0,
+  };
 }
 
 export async function getPaymentTicket(paymentId: number) {
@@ -448,6 +494,14 @@ export async function getDailySales() {
 
 export async function deleteProduct(id: number) {
   await requireAdmin();
+  const inCombos = await prisma.comboOption.findMany({
+    where: { productId: id },
+    select: { slot: { select: { combo: { select: { name: true } } } } },
+  });
+  if (inCombos.length > 0) {
+    const names = [...new Set(inCombos.map((o) => o.slot.combo.name))].join(", ");
+    return { success: false, error: `Es parte de: ${names}. Quítalo de esos combos primero.` };
+  }
   try {
     await prisma.product.delete({ where: { id } });
     revalidatePath("/admin/productos");
@@ -497,13 +551,10 @@ export async function saveProduct(
 ) {
   await requireAdmin();
   const data = { name: name.trim(), price, category: { connect: { id: categoryId } } };
-  if (id) {
-    await prisma.product.update({ where: { id }, data });
-  } else {
-    await prisma.product.create({ data });
-  }
+  const saved = id ? await prisma.product.update({ where: { id }, data }) : await prisma.product.create({ data });
   revalidatePath("/admin/productos");
   revalidatePath("/");
+  return { id: saved.id };
 }
 
 // ---------------------------------------------------------------------------

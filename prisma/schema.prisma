@@ -55,7 +55,35 @@ model Product {
   orderItems   OrderItem[]
   kitchenItems KitchenItem[]
   recipe       RecipeItem[] // Insumos que se descuentan del inventario al venderlo
+
+  // Combos: un producto que agrupa otros (ej. hamburguesa + papas + bebida a elegir)
+  isCombo      Boolean       @default(false)
+  comboSlots   ComboSlot[]   @relation("ComboSlots")
+  comboOptions ComboOption[] // Combos en los que este producto es una opción
+  orderParts   OrderItemPart[]
   createdAt    DateTime    @default(now())
+}
+
+// Parte de un combo: "Plato fuerte", "Acompañante", "Bebida". Con una sola opción es fija;
+// con varias, el mesero elige una al pedir.
+model ComboSlot {
+  id       Int           @id @default(autoincrement())
+  comboId  Int
+  combo    Product       @relation("ComboSlots", fields: [comboId], references: [id], onDelete: Cascade)
+  name     String
+  quantity Int           @default(1) // Ej. 2 piezas de pollo
+  position Int           @default(0)
+  options  ComboOption[]
+}
+
+model ComboOption {
+  id         Int       @id @default(autoincrement())
+  slotId     Int
+  slot       ComboSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  productId  Int
+  product    Product   @relation(fields: [productId], references: [id])
+  extraPrice Float     @default(0) // Recargo por elegir esta opción (ej. +L10 por jugo natural)
+  position   Int       @default(0)
 }
 
 model Order {
@@ -85,6 +113,20 @@ model OrderItem {
   product   Product  @relation(fields: [productId], references: [id])
   quantity  Int      @default(1)
   price     Float    // Precio guardado al momento de la venta
+  // Combos: lo que se eligió. "variant" identifica la combinación para juntar líneas iguales.
+  variant   String   @default("")
+  parts     OrderItemPart[]
+}
+
+// Lo que lleva cada unidad de un combo vendido (copia de lo elegido al momento de pedir)
+model OrderItemPart {
+  id          Int       @id @default(autoincrement())
+  orderItemId Int
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  productId   Int
+  product     Product   @relation(fields: [productId], references: [id])
+  quantity    Int       @default(1)
+  slotName    String
 }
 
 // Lo que la cocina tiene que preparar. Va aparte de OrderItem para que cobrar

@@ -196,6 +196,7 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
                             onClick={() => setLine(item.id, item.quantity, q === item.quantity ? 0 : item.quantity)}
                           >
                             <p className="font-medium truncate">{item.name}</p>
+                            {item.detail && <p className="text-xs text-muted-foreground truncate">{item.detail}</p>}
                             <p className="text-xs text-muted-foreground tabular">
                               {formatMoney(item.price)} · {item.quantity} en cuenta
                             </p>

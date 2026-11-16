@@ -10,6 +10,7 @@ export interface RecipeListProduct extends RecipeProduct {
   categoryId: number;
   cost: number;
   summary: string; // "200 g Carne, 1 unid Pan…"
+  combo?: boolean;
 }
 
 type Filter = "all" | "missing" | "high";
@@ -27,16 +28,17 @@ export function RecipesManager({
   const [filter, setFilter] = useState<Filter>("all");
   const q = query.trim().toLowerCase();
 
-  const high = (p: RecipeListProduct) => p.recipe.length > 0 && p.price > 0 && p.cost / p.price > 0.4;
+  const costed = (p: RecipeListProduct) => p.recipe.length > 0 || (p.combo && p.cost > 0);
+  const high = (p: RecipeListProduct) => !!costed(p) && p.price > 0 && p.cost / p.price > 0.4;
   const counts = {
     all: products.length,
-    missing: products.filter((p) => p.recipe.length === 0).length,
+    missing: products.filter((p) => !p.combo && p.recipe.length === 0).length,
     high: products.filter(high).length,
   };
   const visible = products.filter(
     (p) =>
       (!q || p.name.toLowerCase().includes(q)) &&
-      (filter === "all" || (filter === "missing" ? p.recipe.length === 0 : high(p)))
+      (filter === "all" || (filter === "missing" ? !p.combo && p.recipe.length === 0 : high(p)))
   );
 
   return (
@@ -103,10 +105,10 @@ export function RecipesManager({
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{p.name}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {p.recipe.length > 0 ? p.summary : "Sin receta: no descuenta inventario"}
+                        {p.combo || p.recipe.length > 0 ? p.summary : "Sin receta: no descuenta inventario"}
                       </p>
                     </div>
-                    {p.recipe.length > 0 && (
+                    {costed(p) && (
                       <div className="text-right hidden sm:block">
                         <p className="text-sm tabular">
                           {formatMoney(p.cost)} <span className="text-muted-foreground">/ {formatMoney(p.price)}</span>
@@ -114,7 +116,7 @@ export function RecipesManager({
                         <p className="text-[11px] text-muted-foreground tabular">Ganas {formatMoney(p.price - p.cost)}</p>
                       </div>
                     )}
-                    {p.recipe.length > 0 && p.price > 0 && p.cost > 0 && (
+                    {costed(p) && p.price > 0 && p.cost > 0 && (
                       <span className={cn("text-xs font-semibold rounded-full px-2 py-1 tabular w-14 text-center", tone.cls)} title={tone.label}>
                         {Math.round(pct * 100)}%
                       </span>

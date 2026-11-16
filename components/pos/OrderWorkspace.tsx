@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmAction } from "./ConfirmAction";
 import { CheckoutDialog } from "./CheckoutDialog";
+import { ComboPicker, type ComboSlotView } from "./ComboPicker";
 import { formatMoney } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,8 @@ export interface MenuProduct {
   name: string;
   price: number;
   categoryId: number;
+  /** Partes del combo; si alguna tiene varias opciones, se abre el selector al tocarlo. */
+  combo?: ComboSlotView[] | null;
 }
 export interface MenuCategory {
   id: number;
@@ -46,6 +49,8 @@ export interface OrderLine {
   name: string;
   price: number;
   quantity: number;
+  /** Combos: lo que se eligió ("Coca-Cola · Papas"). */
+  detail?: string | null;
 }
 /** Estado en cocina por producto de esta cuenta. */
 export type KitchenStatus = Record<number, { pending: number; ready: number }>;
@@ -68,7 +73,7 @@ interface Props {
 }
 
 type OptimisticAction =
-  | { type: "add"; product: MenuProduct }
+  | { type: "add"; product: MenuProduct; price: number; detail?: string }
   | { type: "inc"; id: number }
   | { type: "dec"; id: number };
 
@@ -114,7 +119,9 @@ export function OrderWorkspace({
   const [optimisticItems, applyOptimistic] = useOptimistic(items, (state: OrderLine[], action: OptimisticAction) => {
     switch (action.type) {
       case "add": {
-        const found = state.find((i) => i.productId === action.product.id && i.price === action.product.price);
+        const found = state.find(
+          (i) => i.productId === action.product.id && i.price === action.price && (i.detail ?? "") === (action.detail ?? "")
+        );
         if (found) return state.map((i) => (i === found ? { ...i, quantity: i.quantity + 1 } : i));
         return [
           ...state,
@@ -122,8 +129,9 @@ export function OrderWorkspace({
             id: -action.product.id, // temporal y único: una línea por producto
             productId: action.product.id,
             name: action.product.name,
-            price: action.product.price,
+            price: action.price,
             quantity: 1,
+            detail: action.detail ?? null,
           },
         ];
       }
@@ -180,13 +188,24 @@ export function OrderWorkspace({
   const isEmpty = optimisticItems.length === 0;
   const syncing = optimisticItems.some((i) => i.id < 0);
 
-  const add = (p: MenuProduct) =>
+  const [comboOpen, setComboOpen] = useState<MenuProduct | null>(null);
+
+  const addNow = (p: MenuProduct, selection?: Record<number, number>, price = p.price, detail?: string) =>
     startTransition(async () => {
       if (soldOutSet.has(p.id)) toast.warning(`Ojo: el inventario indica que ${p.name} no tiene insumos. Confirma con cocina.`);
-      applyOptimistic({ type: "add", product: p });
-      const res = await addProductToOrder(mesaId, p.id, takeout && orderId ? orderId : undefined);
+      applyOptimistic({ type: "add", product: p, price, detail });
+      const res = await addProductToOrder(mesaId, p.id, takeout && orderId ? orderId : undefined, selection);
       if (res?.error) toast.error(res.error);
     });
+
+  const add = (p: MenuProduct) => {
+    // Combo con algo a elegir: primero el selector
+    if (p.combo?.some((s) => s.options.length > 1)) return setComboOpen(p);
+    const detail = p.combo
+      ?.map((s) => (s.quantity > 1 ? `${s.quantity}× ${s.options[0]?.name}` : s.options[0]?.name))
+      .join(" · ");
+    addNow(p, undefined, p.price, detail);
+  };
 
   const inc = (line: OrderLine) =>
     startTransition(async () => {
@@ -285,7 +304,12 @@ export function OrderWorkspace({
                   <span className={cn("w-1 rounded-full shrink-0", st.bar)} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-2">
-                      <p className="flex-1 font-medium leading-snug">{line.name}</p>
+                      <p className="flex-1 font-medium leading-snug">
+                        {line.name}
+                        {line.detail && (
+                          <span className="block text-xs font-normal text-muted-foreground mt-0.5">{line.detail}</span>
+                        )}
+                      </p>
                       <span className="font-semibold tabular">{formatMoney(line.price * line.quantity)}</span>
                     </div>
                     <div className="mt-2 flex items-center gap-2">
@@ -365,6 +389,19 @@ export function OrderWorkspace({
         </div>
       </div>
     </div>
+  );
+
+  const comboPicker = (
+    <ComboPicker
+      combo={comboOpen ? { id: comboOpen.id, name: comboOpen.name, price: comboOpen.price, slots: comboOpen.combo ?? [] } : null}
+      soldOut={soldOutSet}
+      onClose={() => setComboOpen(null)}
+      onConfirm={(selection, price, detail) => {
+        const p = comboOpen;
+        setComboOpen(null);
+        if (p) addNow(p, selection, price, detail);
+      }}
+    />
   );
 
   const checkoutDialog = checkoutOrderId && (
@@ -531,6 +568,7 @@ export function OrderWorkspace({
       </>
       )}
       {checkoutDialog}
+      {comboPicker}
     </div>
   );
 }

@@ -348,3 +348,59 @@ export async function makeResaleProduct(productId: number): Promise<Result> {
   refreshInventory();
   return { success: true };
 }
+
+/**
+ * Control de stock desde el Menú para productos que se venden tal como se compran
+ * (gaseosas, cervezas, agua, snacks empacados). Crea o reutiliza su insumo y le pone receta de 1 unidad.
+ * Con null deja de controlarse (se quita la receta; el insumo y su historial se conservan).
+ */
+export async function setProductStockControl(
+  productId: number,
+  control: { minStock: number; maxStock: number | null; initialStock?: number } | null
+): Promise<Result> {
+  await requireAdmin();
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { recipe: { include: { ingredient: true } } },
+  });
+  if (!product) return { success: false, error: "El producto no existe" };
+
+  const current = product.recipe.length === 1 && product.recipe[0].quantity === 1 ? product.recipe[0].ingredient : null;
+
+  if (!control) {
+    if (current) await prisma.recipeItem.deleteMany({ where: { productId } });
+    refreshInventory();
+    return { success: true };
+  }
+
+  const minStock = Math.max(0, num(control.minStock));
+  const maxStock = control.maxStock && control.maxStock > minStock ? control.maxStock : null;
+
+  await prisma.$transaction(async (tx) => {
+    let ing =
+      current ??
+      (await tx.ingredient.findFirst({ where: { name: { equals: product.name, mode: "insensitive" } } }));
+    if (!ing) {
+      const initial = Math.max(0, num(control.initialStock));
+      ing = await tx.ingredient.create({ data: { name: product.name, unit: "unid", stock: initial, minStock, maxStock } });
+      if (initial > 0) {
+        await tx.stockMovement.create({
+          data: { ingredientId: ing.id, type: "INITIAL", quantity: initial, stockAfter: initial, unitCost: 0, note: "Stock inicial" },
+        });
+      }
+    } else {
+      // Si cambió el nombre del producto, el insumo de reventa lo sigue (si no choca con otro)
+      const rename =
+        ing.name !== product.name &&
+        !(await tx.ingredient.findFirst({ where: { name: { equals: product.name, mode: "insensitive" }, NOT: { id: ing.id } } }));
+      ing = await tx.ingredient.update({
+        where: { id: ing.id },
+        data: { minStock, maxStock, active: true, ...(rename ? { name: product.name } : {}) },
+      });
+    }
+    await tx.recipeItem.deleteMany({ where: { productId } });
+    await tx.recipeItem.create({ data: { productId, ingredientId: ing.id, quantity: 1 } });
+  });
+  refreshInventory();
+  return { success: true };
+}

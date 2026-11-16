@@ -9,27 +9,61 @@ export const dynamic = "force-dynamic";
 export default async function RecetasPage() {
   const [products, categories, ingredients] = await Promise.all([
     prisma.product.findMany({
-      include: { recipe: { include: { ingredient: true }, orderBy: { id: "asc" } } },
+      include: {
+        recipe: { include: { ingredient: true }, orderBy: { id: "asc" } },
+        comboSlots: {
+          orderBy: [{ position: "asc" }, { id: "asc" }],
+          include: { options: { orderBy: [{ position: "asc" }, { id: "asc" }], include: { product: true } } },
+        },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
     prisma.ingredient.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
   ]);
 
-  const list: RecipeListProduct[] = products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    price: p.price,
-    categoryId: p.categoryId,
-    recipe: p.recipe.map((r) => ({ ingredientId: r.ingredientId, quantity: r.quantity })),
-    cost: p.recipe.reduce((s, r) => s + r.quantity * r.ingredient.cost, 0),
-    summary: p.recipe.map((r) => `${formatQty(r.quantity, r.ingredient.unit)} ${r.ingredient.name}`).join(" · "),
-  }));
+  const ownCost = new Map(products.map((p) => [p.id, p.recipe.reduce((s, r) => s + r.quantity * r.ingredient.cost, 0)]));
+  const hasRecipe = new Set(products.filter((p) => p.recipe.length > 0).map((p) => p.id));
+
+  const list: RecipeListProduct[] = products.map((p) => {
+    const own = p.recipe.map((r) => `${formatQty(r.quantity, r.ingredient.unit)} ${r.ingredient.name}`).join(" · ");
+    if (!p.isCombo) {
+      return {
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        categoryId: p.categoryId,
+        recipe: p.recipe.map((r) => ({ ingredientId: r.ingredientId, quantity: r.quantity })),
+        cost: ownCost.get(p.id) ?? 0,
+        summary: own,
+      };
+    }
+    // Combo: su costo es lo que cuestan sus partes (con la primera opción de cada una) + su receta propia (empaque)
+    const parts = p.comboSlots.filter((s) => s.options.length > 0);
+    const cost =
+      (ownCost.get(p.id) ?? 0) +
+      parts.reduce((s, slot) => s + (ownCost.get(slot.options[0].productId) ?? 0) * slot.quantity, 0);
+    const missing = parts.filter((slot) => !hasRecipe.has(slot.options[0].productId)).map((s) => s.options[0].product.name);
+    return {
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      categoryId: p.categoryId,
+      recipe: p.recipe.map((r) => ({ ingredientId: r.ingredientId, quantity: r.quantity })),
+      cost,
+      combo: true,
+      summary:
+        `Combo: ${parts.map((s) => s.options[0].product.name + (s.options.length > 1 ? " u otra" : "")).join(" + ")}` +
+        (missing.length ? ` · sin receta: ${missing.join(", ")}` : "") +
+        (own ? ` · empaque: ${own}` : ""),
+    };
+  });
 
   // Solo los que ya tienen costo (insumos con al menos una compra o costo cargado)
-  const withRecipe = list.filter((p) => p.recipe.length > 0 && p.price > 0 && p.cost > 0);
+  const withRecipe = list.filter((p) => !p.combo && p.recipe.length > 0 && p.price > 0 && p.cost > 0);
   const avgPct = withRecipe.length ? withRecipe.reduce((s, p) => s + p.cost / p.price, 0) / withRecipe.length : 0;
-  const coverage = list.length ? Math.round((list.filter((p) => p.recipe.length > 0).length / list.length) * 100) : 0;
+  const singles = list.filter((p) => !p.combo);
+  const coverage = singles.length ? Math.round((singles.filter((p) => p.recipe.length > 0).length / singles.length) * 100) : 0;
   const best = [...withRecipe].sort((a, b) => b.price - b.cost - (a.price - a.cost))[0];
 
   return (

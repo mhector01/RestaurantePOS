@@ -8,6 +8,7 @@ import { KitchenReadyBanner } from "@/components/pos/KitchenReadyBanner";
 import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { formatElapsed } from "@/lib/config";
 import { outOfStockProductIds } from "@/lib/stock";
+import { partsLabel } from "@/lib/combos";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -23,11 +24,23 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
   const takeout = takeoutOrderId !== undefined;
 
   const [productos, categorias, order, soldOut] = await Promise.all([
-    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.product.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        comboSlots: {
+          orderBy: [{ position: "asc" }, { id: "asc" }],
+          include: { options: { orderBy: [{ position: "asc" }, { id: "asc" }], include: { product: true } } },
+        },
+      },
+    }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
     prisma.order.findFirst({
       where: takeout ? { id: takeoutOrderId } : { tableId, status: "OPEN" },
-      include: { items: { include: { product: true }, orderBy: { id: "asc" } }, payments: true, user: true },
+      include: {
+        items: { include: { product: true, parts: { include: { product: true } } }, orderBy: { id: "asc" } },
+        payments: true,
+        user: true,
+      },
     }),
     outOfStockProductIds(),
   ]);
@@ -136,7 +149,20 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
         takeout={takeout}
         kitchen={kitchenByProduct}
         orderId={isOpen ? order.id : null}
-        products={productos.map((p) => ({ id: p.id, name: p.name, price: p.price, categoryId: p.categoryId }))}
+        products={productos.map((p) => ({
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          categoryId: p.categoryId,
+          combo: p.isCombo
+            ? p.comboSlots.map((s) => ({
+                id: s.id,
+                name: s.name,
+                quantity: s.quantity,
+                options: s.options.map((o) => ({ id: o.id, productId: o.productId, name: o.product.name, extraPrice: o.extraPrice })),
+              }))
+            : null,
+        }))}
         categories={categorias.map((c) => ({ id: c.id, name: c.name }))}
         items={(isOpen ? order.items : []).map((i) => ({
           id: i.id,
@@ -144,6 +170,7 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
           name: i.product.name,
           price: i.price,
           quantity: i.quantity,
+          detail: partsLabel(i.parts) || null,
         }))}
         paid={paid}
         soldOut={soldOut}

@@ -50,9 +50,10 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
   const wasteValue = waste.reduce((s, m) => s + Math.abs(m.quantity) * m.unitCost, 0);
 
   // Lista de compras sugerida, agrupada por proveedor habitual
+  // Los agotados sin mínimo definido también salen (con cantidad por definir), para que nunca se escapen
   const toBuy = reorder
     .map((i) => ({ ...i, qty: suggestedOrder(i.stock, i.minStock, i.maxStock) }))
-    .filter((i) => i.qty > 0);
+    .filter((i) => i.qty > 0 || i.stock <= 0);
   const groups = new Map<string, { supplierId: number | null; name: string; items: typeof toBuy }>();
   for (const i of toBuy) {
     const key = String(i.supplierId ?? "none");
@@ -101,7 +102,7 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
               const est = g.items.reduce((s, i) => s + i.qty * i.cost, 0);
               const text = [
                 `Hola${g.supplierId ? ` ${g.name}` : ""}, de ${BUSINESS.name} queremos hacer el siguiente pedido:`,
-                ...g.items.map((i) => `• ${formatQty(i.qty, i.unit)} de ${i.name}`),
+                ...g.items.map((i) => (i.qty > 0 ? `• ${formatQty(i.qty, i.unit)} de ${i.name}` : `• ${i.name} (cantidad por confirmar)`)),
                 "¡Gracias!",
               ].join("\n");
               return (
@@ -124,7 +125,13 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
                         <span className={i.stock <= 0 ? "size-2 rounded-full bg-red-500 shrink-0" : "size-2 rounded-full bg-amber-400 shrink-0"} />
                         <span className="flex-1 min-w-0 truncate">{i.name}</span>
                         <span className="text-xs text-muted-foreground tabular">hay {formatQty(i.stock, i.unit)}</span>
-                        <span className="font-semibold tabular w-24 text-right">+{formatQty(i.qty, i.unit)}</span>
+                        {i.qty > 0 ? (
+                          <span className="font-semibold tabular w-24 text-right">+{formatQty(i.qty, i.unit)}</span>
+                        ) : (
+                          <span className="text-xs text-amber-300 w-24 text-right" title="Define su stock mínimo para que el sistema calcule cuánto pedir">
+                            Sin mínimo
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>

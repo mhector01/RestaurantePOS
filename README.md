@@ -9,6 +9,7 @@ Punto de venta para restaurantes: mesas, comandas, pantalla de cocina, cobro (to
 - `/llevar`: pedidos para llevar. Se pueden atender varios a la vez; cada uno exige el nombre del cliente (y opcionalmente su teléfono). Se agrupan en *Listos para entregar* (no se entregan sin cobrar), *En curso* y *Entregados hoy*.
 - Cualquier cuenta de mesa puede llevar un **nombre de referencia** opcional ("Familia López"), visible en el plano, la cocina y el panel.
 - `/cocina`: pantalla de cocina. Muestra lo pendiente por mesa con el tiempo de espera; el cocinero marca cada plato como listo y el mesero ve el aviso en la mesa. En *Panel → Menú* eliges qué categorías van a cocina (por ejemplo, desactiva Bebidas).
+- Combos (*Panel → Menú → Nuevo combo*): se arman por partes (Plato, Acompañante, Bebida…). Una parte con un solo producto va fija; con varios, el mesero elige al pedir y cada opción puede tener recargo. Cocina recibe los platos del combo, el ticket muestra lo elegido y el inventario descuenta cada componente según su receta.
 - `/admin/inventario`: inventario. Insumos con stock mínimo e ideal, proveedores, compras (pagadas o a crédito, con costo promedio), recetas por plato con su costo de alimento, mermas, conteo físico y kardex. Al cobrar se descuenta del stock lo que lleva cada plato según su receta; lo que llega al mínimo aparece en la lista de compras sugerida (agrupada por proveedor) y con alerta en el menú del panel. Los productos sin receta no se controlan.
 - `/admin`: panel del dueño (contraseña `ADMIN_PASSWORD`).
 

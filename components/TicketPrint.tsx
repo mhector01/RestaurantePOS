@@ -12,7 +12,7 @@ export interface TicketPayment {
     id?: number;
     name?: string | null;
     table: { number: number };
-    items: { id: number; quantity: number; price: number; product: { name: string } }[];
+    items: { id: number; quantity: number; price: number; product: { name: string }; detail?: string | null }[];
   };
 }
 
@@ -60,7 +60,10 @@ export function TicketPrint({
           {payment.order.items.map((item) => (
             <tr key={item.id}>
               <td className="py-0.5 align-top">{item.quantity}</td>
-              <td className="py-0.5 pr-1">{item.product.name}</td>
+              <td className="py-0.5 pr-1">
+                {item.product.name}
+                {item.detail && <span className="block text-[10px]">  {item.detail}</span>}
+              </td>
               <td className="py-0.5 text-right align-top">{formatMoney(item.price * item.quantity)}</td>
             </tr>
           ))}

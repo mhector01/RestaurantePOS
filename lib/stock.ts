@@ -52,7 +52,18 @@ export async function outOfStockProductIds() {
     select: { productId: true },
     distinct: ["productId"],
   });
-  return rows.map((r) => r.productId);
+  const out = new Set(rows.map((r) => r.productId));
+  if (out.size === 0) return [];
+
+  // Un combo está sin stock si alguna de sus partes no tiene ninguna opción disponible
+  const combos = await prisma.product.findMany({
+    where: { isCombo: true },
+    select: { id: true, comboSlots: { select: { options: { select: { productId: true } } } } },
+  });
+  for (const c of combos) {
+    if (c.comboSlots.some((s) => s.options.length > 0 && s.options.every((o) => out.has(o.productId)))) out.add(c.id);
+  }
+  return [...out];
 }
 
 /** Cuántos insumos están en o por debajo de su mínimo (incluye agotados). */
