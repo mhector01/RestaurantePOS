@@ -22,6 +22,7 @@ interface Props {
   orderId: number;
   mesaId: number;
   items: OrderLine[];
+  takeout?: boolean;
 }
 
 /** Sugerencias de billetes para el efectivo recibido. */
@@ -36,7 +37,7 @@ function cashSuggestions(total: number) {
   return [...out];
 }
 
-export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaId, items }: Props) {
+export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaId, items, takeout = false }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [method, setMethod] = useState<Method>("CASH");
@@ -99,7 +100,7 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
 
   const finish = () => {
     onOpenChange(false);
-    if (result && result.remainingItems === 0) router.push("/");
+    if (result && result.remainingItems === 0) router.push(takeout ? "/llevar" : "/");
   };
 
   return (
@@ -135,8 +136,12 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
 
             <p className="text-sm text-muted-foreground mt-4">
               {result.remainingItems === 0
-                ? "La cuenta quedó saldada y la mesa está libre."
-                : "Aún quedan productos por cobrar en esta mesa."}
+                ? takeout
+                  ? "Pedido pagado. Entrégalo al cliente cuando cocina lo marque listo."
+                  : "La cuenta quedó saldada y la mesa está libre."
+                : takeout
+                  ? "Aún quedan productos por cobrar en este pedido."
+                  : "Aún quedan productos por cobrar en esta mesa."}
             </p>
 
             <div className="grid grid-cols-2 gap-2 w-full mt-6">
@@ -144,7 +149,7 @@ export function CheckoutDialog({ open, onOpenChange, initialMode, orderId, mesaI
                 <Printer /> Imprimir
               </Button>
               <Button className="h-12 rounded-xl" onClick={finish}>
-                {result.remainingItems === 0 ? "Ir a mesas" : "Seguir cobrando"}
+                {result.remainingItems === 0 ? (takeout ? "Ir a pedidos" : "Ir a mesas") : "Seguir cobrando"}
               </Button>
             </div>
             <TicketPrint payment={result} received={paidInfo?.received} change={paidInfo?.change} />

@@ -6,6 +6,8 @@ Punto de venta para restaurantes: mesas, comandas, pantalla de cocina, cobro (to
 
 - `/`: plano de mesas en vivo para meseros (entran con su PIN). Cada mesa muestra si está libre, ocupada (con total y tiempo) o con pedido listo en cocina; también hay vista de lista.
 - `/admin/mesas`: editor del plano. Crea salas (Salón, Terraza…), agrega mesas cuadradas, redondas o rectangulares desde la paleta y arrástralas a su lugar.
+- `/llevar`: pedidos para llevar. Se pueden atender varios a la vez; cada uno exige el nombre del cliente (y opcionalmente su teléfono). Se agrupan en *Listos para entregar* (no se entregan sin cobrar), *En curso* y *Entregados hoy*.
+- Cualquier cuenta de mesa puede llevar un **nombre de referencia** opcional ("Familia López"), visible en el plano, la cocina y el panel.
 - `/cocina`: pantalla de cocina. Muestra lo pendiente por mesa con el tiempo de espera; el cocinero marca cada plato como listo y el mesero ve el aviso en la mesa. En *Panel → Menú* eliges qué categorías van a cocina (por ejemplo, desactiva Bebidas).
 - `/admin`: panel del dueño (contraseña `ADMIN_PASSWORD`).
 

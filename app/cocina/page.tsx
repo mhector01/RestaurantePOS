@@ -31,6 +31,7 @@ export default async function CocinaPage() {
       t = {
         orderId: i.orderId,
         table: i.order.table.number,
+        name: i.order.name,
         waiter: i.order.user?.name ?? null,
         since: i.createdAt.toISOString(),
         items: [],

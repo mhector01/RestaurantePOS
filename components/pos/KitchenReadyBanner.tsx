@@ -3,16 +3,18 @@
 import { useTransition } from "react";
 import { BellRing, Check, ChefHat, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { markTableServed } from "@/app/actions";
+import { markOrderServed, markTableServed } from "@/app/actions";
 
 interface Props {
   tableId: number;
+  /** Para llevar: solo se marca como entregado ese pedido. */
+  orderId?: number;
   ready: { name: string; quantity: number }[];
   pendingUnits: number;
 }
 
 /** Avisa al mesero qué ya salió de cocina y qué sigue preparándose. */
-export function KitchenReadyBanner({ tableId, ready, pendingUnits }: Props) {
+export function KitchenReadyBanner({ tableId, orderId, ready, pendingUnits }: Props) {
   const [pending, startTransition] = useTransition();
 
   if (ready.length === 0 && pendingUnits === 0) return null;
@@ -43,14 +45,15 @@ export function KitchenReadyBanner({ tableId, ready, pendingUnits }: Props) {
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
-            await markTableServed(tableId);
-            toast.success("Marcado como servido");
+            if (orderId) await markOrderServed(orderId);
+            else await markTableServed(tableId);
+            toast.success(orderId ? "Pedido entregado" : "Marcado como servido");
           })
         }
         className="h-10 px-4 rounded-xl bg-success text-white text-sm font-medium inline-flex items-center gap-1.5 shrink-0 hover:opacity-90"
       >
         {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-        Servido
+        {orderId ? "Entregado" : "Servido"}
       </button>
     </div>
   );

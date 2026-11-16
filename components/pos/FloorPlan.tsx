@@ -8,6 +8,7 @@ import { formatElapsed, formatMoney } from "@/lib/config";
 import { CELL, canvasSize, placeTables, type TableShape } from "@/lib/floor";
 import { FloorCanvas, TableShapeView, type TableTone } from "@/components/floor/FloorCanvas";
 import { cn } from "@/lib/utils";
+import { NewTakeoutButton } from "@/components/pos/NewTakeoutButton";
 
 export interface FloorTable {
   id: number;
@@ -17,6 +18,7 @@ export interface FloorTable {
   items: number;
   openedAt: string | null;
   waiter: string | null;
+  label?: string | null; // nombre de referencia de la cuenta
   ready: number; // platos listos en cocina esperando ser servidos
   shape: TableShape;
   seats: number;
@@ -75,41 +77,37 @@ export function FloorPlan({
 
       {/* Para llevar */}
       {counter ? (
-        <Link
-          href={`/mesa/${counter.id}`}
+        <div
           className={cn(
-            "flex items-center gap-3 rounded-xl border px-3 py-2 transition-all active:scale-[0.99]",
-            counter.occupied
-              ? "bg-primary/15 border-primary/40 hover:bg-primary/20"
-              : "bg-ink-900 border-ink-800 hover:border-ink-600"
+            "flex items-center gap-3 rounded-xl border px-3 py-2 transition-colors",
+            counter.ready > 0
+              ? "bg-emerald-500/10 border-emerald-400/50"
+              : counter.occupied
+                ? "bg-primary/10 border-primary/40"
+                : "bg-ink-900 border-ink-800"
           )}
         >
-          <span
-            className={cn(
-              "size-9 rounded-lg grid place-items-center shrink-0",
-              counter.occupied ? "bg-primary text-primary-foreground" : "bg-white/5 text-ink-300"
-            )}
-          >
-            <ShoppingBag className="size-5" />
-          </span>
-          <div className="flex-1 min-w-0 flex flex-wrap items-baseline gap-x-2">
-            <p className="font-semibold text-sm">Para llevar</p>
-            <p className="text-xs text-ink-400 truncate">
-              {counter.occupied
-                ? `${counter.items} producto${counter.items === 1 ? "" : "s"} · ${formatMoney(counter.total)}`
-                : "Venta rápida sin mesa"}
-            </p>
-            {counter.ready > 0 && <ReadyBadge count={counter.ready} />}
-          </div>
-          <span
-            className={cn(
-              "h-9 px-3 sm:px-4 rounded-lg text-sm font-medium inline-flex items-center shrink-0",
-              counter.occupied ? "bg-primary text-primary-foreground" : "bg-white text-ink-900"
-            )}
-          >
-            {counter.occupied ? "Continuar" : "Nueva venta"}
-          </span>
-        </Link>
+          <Link href="/llevar" className="flex-1 min-w-0 flex items-center gap-3 group">
+            <span
+              className={cn(
+                "size-9 rounded-lg grid place-items-center shrink-0",
+                counter.occupied ? "bg-primary text-primary-foreground" : "bg-white/5 text-ink-300"
+              )}
+            >
+              <ShoppingBag className="size-5" />
+            </span>
+            <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="font-semibold text-sm group-hover:text-primary transition-colors">Para llevar</p>
+              <p className="text-xs text-ink-400 truncate">
+                {counter.occupied
+                  ? `${counter.items} en curso${counter.total > 0 ? ` · ${formatMoney(counter.total)} por cobrar` : ""}`
+                  : "Sin pedidos"}
+              </p>
+              {counter.ready > 0 && <ReadyBadge count={counter.ready} />}
+            </div>
+          </Link>
+          <NewTakeoutButton className="h-9 px-3 rounded-lg shadow-none" label="Nuevo" />
+        </div>
       ) : (
         <button
           type="button"
@@ -235,6 +233,16 @@ function PlanView({ tables }: { tables: FloorTable[] }) {
           >
             <TableShapeView shape={t.shape} seats={t.seats} w={p.w} h={p.h} tone={toneOf(t)}>
               <span className={cn("font-bold leading-none", small ? "text-base" : "text-xl")}>{t.number}</span>
+              {t.label && (
+                <span
+                  className={cn(
+                    "mt-0.5 max-w-[90%] truncate leading-tight font-medium text-white/85",
+                    small ? "text-[8px]" : "text-[10px]"
+                  )}
+                >
+                  {t.label}
+                </span>
+              )}
               {t.ready > 0 ? (
                 <span className="mt-1 text-[10px] font-semibold text-emerald-300 inline-flex items-center gap-0.5">
                   <BellRing className="size-2.5" /> {t.ready}
@@ -293,6 +301,7 @@ function ListView({ tables, filter }: { tables: FloorTable[]; filter: Filter }) 
             </span>
           </div>
           <span className="text-4xl font-semibold tracking-tight leading-none mt-1">{t.number}</span>
+          {t.label && <span className="text-sm font-medium text-ink-200 truncate mt-1">{t.label}</span>}
           {t.ready > 0 && <ReadyBadge count={t.ready} className="mt-2 self-start" />}
           {t.occupied ? (
             <div className="mt-auto pt-3 space-y-1">

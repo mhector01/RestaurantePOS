@@ -26,6 +26,7 @@ function refreshTable(mesaId: number) {
   revalidatePath(`/mesa/${mesaId}`);
   revalidatePath("/");
   revalidatePath("/cocina");
+  revalidatePath("/llevar", "layout");
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +109,10 @@ export async function markTableServed(tableId: number) {
  */
 async function settleEmptyOrder(orderId: number, mesaId: number) {
   const payments = await prisma.payment.count({ where: { orderId } });
+  // Un pedido para llevar sin productos se conserva (tiene el nombre del cliente);
+  // solo se elimina al cancelarlo de forma explícita.
+  const table = await prisma.table.findUnique({ where: { id: mesaId } });
+  if (table?.number === 0 && payments === 0) return;
   if (payments > 0) {
     await prisma.order.update({ where: { id: orderId }, data: { status: "PAID" } });
   } else {
@@ -124,14 +129,18 @@ async function settleEmptyOrder(orderId: number, mesaId: number) {
  * Agrega una unidad de un producto a la comanda de la mesa.
  * Si el producto ya está en la comanda, suma la cantidad en lugar de crear otra línea.
  */
-export async function addProductToOrder(tableId: number, productId: number) {
+export async function addProductToOrder(tableId: number, productId: number, orderId?: number) {
   const cookieStore = await cookies();
   const waiterId = cookieStore.get("waiter_id")?.value;
 
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) return { error: "Producto no encontrado" };
 
-  let order = await prisma.order.findFirst({ where: { tableId, status: "OPEN" } });
+  // Para llevar: cada pedido es independiente, así que se agrega a ese pedido en particular.
+  let order = orderId
+    ? await prisma.order.findFirst({ where: { id: orderId, tableId, status: "OPEN" } })
+    : await prisma.order.findFirst({ where: { tableId, status: "OPEN" } });
+  if (orderId && !order) return { error: "Este pedido ya fue cerrado." };
   if (!order) {
     order = await prisma.order.create({
       data: { tableId, userId: waiterId ? parseInt(waiterId) : null },
@@ -209,6 +218,95 @@ export async function clearOrder(orderId: number, mesaId: number) {
   await prisma.kitchenItem.deleteMany({ where: { orderId, status: "PENDING" } });
   await settleEmptyOrder(orderId, mesaId);
   refreshTable(mesaId);
+}
+
+// ---------------------------------------------------------------------------
+// NOMBRE DE REFERENCIA Y PEDIDOS PARA LLEVAR
+// ---------------------------------------------------------------------------
+
+function cleanName(name: string) {
+  return name.replace(/\s+/g, " ").trim().slice(0, 40);
+}
+function cleanPhone(phone?: string | null) {
+  const p = (phone ?? "").replace(/[^\d+\-\s]/g, "").trim().slice(0, 20);
+  return p || null;
+}
+
+/**
+ * Pone o cambia el nombre de referencia de la cuenta de una mesa.
+ * Si la mesa aún no tiene cuenta abierta, la crea (vacía) para guardar el nombre.
+ */
+export async function setOrderName(tableId: number, orderId: number | null, name: string, phone?: string | null) {
+  const table = await prisma.table.findUnique({ where: { id: tableId } });
+  if (!table) return { success: false, error: "La mesa no existe." };
+  const clean = cleanName(name);
+  if (table.number === 0 && clean.length < 2) {
+    return { success: false, error: "Los pedidos para llevar necesitan el nombre del cliente." };
+  }
+
+  let id = orderId;
+  if (id) {
+    await prisma.order.update({
+      where: { id },
+      data: { name: clean || null, ...(phone !== undefined ? { phone: cleanPhone(phone) } : {}) },
+    });
+  } else {
+    const existing = await prisma.order.findFirst({ where: { tableId, status: "OPEN" } });
+    if (existing) {
+      await prisma.order.update({ where: { id: existing.id }, data: { name: clean || null } });
+      id = existing.id;
+    } else if (clean) {
+      const cookieStore = await cookies();
+      const waiterId = cookieStore.get("waiter_id")?.value;
+      const created = await prisma.order.create({
+        data: { tableId, name: clean, userId: waiterId ? parseInt(waiterId) : null },
+      });
+      id = created.id;
+    }
+  }
+  refreshTable(tableId);
+  return { success: true, orderId: id };
+}
+
+async function counterTable() {
+  return (
+    (await prisma.table.findFirst({ where: { number: 0 } })) ??
+    (await prisma.table.create({ data: { number: 0 } }))
+  );
+}
+
+/** Abre un pedido para llevar. El nombre del cliente es obligatorio para poder entregarlo. */
+export async function createTakeoutOrder(name: string, phone?: string | null) {
+  const clean = cleanName(name);
+  if (clean.length < 2) return { success: false, error: "Escribe el nombre del cliente." };
+  const cookieStore = await cookies();
+  const waiterId = cookieStore.get("waiter_id")?.value;
+  const counter = await counterTable();
+  const order = await prisma.order.create({
+    data: { tableId: counter.id, name: clean, phone: cleanPhone(phone), userId: waiterId ? parseInt(waiterId) : null },
+  });
+  refreshTable(counter.id);
+  return { success: true, orderId: order.id };
+}
+
+/** Cancela un pedido para llevar que aún no se ha cobrado. */
+export async function cancelTakeoutOrder(orderId: number) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { payments: true, table: true } });
+  if (!order) return { success: true };
+  if (order.payments.length > 0) {
+    return { success: false, error: "El pedido ya tiene pagos registrados; no se puede cancelar." };
+  }
+  await prisma.orderItem.deleteMany({ where: { orderId } });
+  await prisma.order.delete({ where: { id: orderId } }); // también borra lo que estaba en cocina
+  refreshTable(order.tableId);
+  return { success: true };
+}
+
+/** Marca como entregado (servido) lo que estaba listo de un pedido concreto. */
+export async function markOrderServed(orderId: number) {
+  await prisma.kitchenItem.updateMany({ where: { orderId, status: "READY" }, data: { status: "SERVED" } });
+  refreshKitchen();
+  revalidatePath("/llevar", "layout");
 }
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,8 @@ export interface TicketPayment {
   method: string;
   createdAt: string | Date;
   order: {
+    id?: number;
+    name?: string | null;
     table: { number: number };
     items: { id: number; quantity: number; price: number; product: { name: string } }[];
   };
@@ -41,7 +43,8 @@ export function TicketPrint({
 
       <div className="mb-2 space-y-0.5">
         <p>Fecha: {new Date(payment.createdAt).toLocaleString("es")}</p>
-        <p>{mesa === 0 ? "Para llevar" : `Mesa ${mesa}`}</p>
+        <p>{mesa === 0 ? `Para llevar · Pedido #${payment.order.id ?? ""}` : `Mesa ${mesa}`}</p>
+        {payment.order.name && <p className="font-bold">Cliente: {payment.order.name}</p>}
         <p>Comprobante #{payment.id}</p>
       </div>
 

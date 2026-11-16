@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   BellRing,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import {
   addProductToOrder,
+  cancelTakeoutOrder,
   clearOrder,
   incrementOrderItem,
   removeProductFromOrder,
@@ -57,6 +59,10 @@ interface Props {
   items: OrderLine[];
   paid: number;
   kitchen?: KitchenStatus;
+  /** Pedido para llevar: los productos van a este pedido y "Vaciar" pasa a ser "Cancelar pedido". */
+  takeout?: boolean;
+  /** Si el pedido ya se cerró, se muestra esto en lugar del menú (el diálogo de cobro sigue montado). */
+  closed?: React.ReactNode;
 }
 
 type OptimisticAction =
@@ -87,7 +93,19 @@ function initials(name: string) {
     .join("") || name.slice(0, 2).toUpperCase();
 }
 
-export function OrderWorkspace({ mesaId, label, orderId, products, categories, items, paid, kitchen = {} }: Props) {
+export function OrderWorkspace({
+  mesaId,
+  label,
+  orderId,
+  products,
+  categories,
+  items,
+  paid,
+  kitchen = {},
+  takeout = false,
+  closed,
+}: Props) {
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const [optimisticItems, applyOptimistic] = useOptimistic(items, (state: OrderLine[], action: OptimisticAction) => {
     switch (action.type) {
@@ -161,7 +179,7 @@ export function OrderWorkspace({ mesaId, label, orderId, products, categories, i
   const add = (p: MenuProduct) =>
     startTransition(async () => {
       applyOptimistic({ type: "add", product: p });
-      const res = await addProductToOrder(mesaId, p.id);
+      const res = await addProductToOrder(mesaId, p.id, takeout && orderId ? orderId : undefined);
       if (res?.error) toast.error(res.error);
     });
 
@@ -199,12 +217,33 @@ export function OrderWorkspace({ mesaId, label, orderId, products, categories, i
           {label === "Para llevar" ? <ShoppingBag className="size-5" /> : <ReceiptText className="size-5" />}
         </span>
         <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold leading-tight">Cuenta · {label}</h2>
+          <h2 className="text-lg font-semibold leading-tight truncate">
+            {takeout ? `Pedido · ${label}` : `Cuenta · ${label}`}
+          </h2>
           <p className="text-sm text-muted-foreground">
             {count === 0 ? "Sin productos" : `${count} producto${count === 1 ? "" : "s"}`}
           </p>
         </div>
-        {!isEmpty && orderId && (
+        {takeout && orderId && paid === 0 ? (
+          <ConfirmAction
+            title="¿Cancelar este pedido?"
+            description="Se eliminará el pedido, incluido lo que esté pendiente en cocina."
+            confirmLabel="Cancelar pedido"
+            successMessage="Pedido cancelado"
+            action={async () => {
+              const res = await cancelTakeoutOrder(orderId);
+              if (res.success) {
+                setSheetOpen(false);
+                router.push("/llevar");
+              }
+              return res;
+            }}
+          >
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive h-9">
+              <Trash2 /> Cancelar
+            </Button>
+          </ConfirmAction>
+        ) : !takeout && !isEmpty && orderId && (
           <ConfirmAction
             title="¿Vaciar la cuenta?"
             description="Se quitarán todos los productos que aún no se han cobrado y la mesa quedará libre."
@@ -323,8 +362,24 @@ export function OrderWorkspace({ mesaId, label, orderId, products, categories, i
     </div>
   );
 
+  const checkoutDialog = checkoutOrderId && (
+    <CheckoutDialog
+      open={checkout.open}
+      onOpenChange={(v) => setCheckout((c) => ({ ...c, open: v }))}
+      initialMode={checkout.mode}
+      orderId={checkoutOrderId}
+      mesaId={mesaId}
+      items={optimisticItems}
+      takeout={takeout}
+    />
+  );
+
+  // El diálogo de cobro va siempre en la misma posición del árbol para no perder
+  // el resultado del pago cuando el pedido pasa a cerrado.
   return (
     <div className="flex-1 min-h-0 flex">
+      {closed ? closed : (
+      <>
       {/* ---------------------------- MENÚ ---------------------------- */}
       <section className="flex-1 min-w-0 flex flex-col">
         <div className="sticky top-16 z-10 bg-background/90 backdrop-blur px-4 sm:px-6 pt-4 pb-3 space-y-3 border-b">
@@ -462,16 +517,9 @@ export function OrderWorkspace({ mesaId, label, orderId, products, categories, i
         </DialogContent>
       </Dialog>
 
-      {checkoutOrderId && (
-        <CheckoutDialog
-          open={checkout.open}
-          onOpenChange={(v) => setCheckout((c) => ({ ...c, open: v }))}
-          initialMode={checkout.mode}
-          orderId={checkoutOrderId}
-          mesaId={mesaId}
-          items={optimisticItems}
-        />
+      </>
       )}
+      {checkoutDialog}
     </div>
   );
 }

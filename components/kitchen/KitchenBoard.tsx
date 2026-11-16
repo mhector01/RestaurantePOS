@@ -19,6 +19,7 @@ export interface KitchenTicketItem {
 export interface KitchenTicket {
   orderId: number;
   table: number;
+  name: string | null; // cliente (para llevar) o nombre de referencia de la mesa
   waiter: string | null;
   since: string;
   items: KitchenTicketItem[];
@@ -193,9 +194,14 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
                     )}
                   >
                     {t.table === 0 ? <ShoppingBag className="size-6" /> : null}
-                    <h2 className="text-2xl font-bold flex-1 leading-none">
-                      {t.table === 0 ? "Para llevar" : `Mesa ${t.table}`}
-                    </h2>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-2xl font-bold leading-none truncate">
+                        {t.table === 0 ? (t.name ?? "Para llevar") : `Mesa ${t.table}`}
+                      </h2>
+                      <p className="text-sm font-medium opacity-80 mt-1 truncate">
+                        {t.table === 0 ? `Para llevar · #${t.orderId}` : t.name}
+                      </p>
+                    </div>
                     <span className="inline-flex items-center gap-1 text-lg font-semibold tabular" suppressHydrationWarning>
                       <Clock className="size-5" /> {mins} min
                     </span>
@@ -268,7 +274,9 @@ export function KitchenBoard({ business, tickets }: { business: string; tickets:
                     <Check className="size-4" />
                   </span>
                   <div className="text-sm">
-                    <p className="font-semibold">{t.table === 0 ? "Para llevar" : `Mesa ${t.table}`}</p>
+                    <p className="font-semibold">
+                      {t.table === 0 ? `${t.name ?? "Para llevar"} · #${t.orderId}` : `Mesa ${t.table}${t.name ? ` · ${t.name}` : ""}`}
+                    </p>
                     <p className="text-ink-400">
                       {t.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}
                     </p>

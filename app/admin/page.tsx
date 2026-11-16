@@ -107,7 +107,10 @@ export default async function AdminDashboard() {
                     {o.table.number === 0 ? "PL" : o.table.number}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium">{o.table.number === 0 ? "Para llevar" : `Mesa ${o.table.number}`}</p>
+                    <p className="font-medium truncate">
+                      {o.table.number === 0 ? `Para llevar #${o.id}` : `Mesa ${o.table.number}`}
+                      {o.name && <span className="text-muted-foreground font-normal"> · {o.name}</span>}
+                    </p>
                     <p className="text-xs text-muted-foreground flex items-center gap-3">
                       <span className="inline-flex items-center gap-1" suppressHydrationWarning>
                         <Clock className="size-3" /> {formatElapsed(o.createdAt)}

@@ -54,6 +54,7 @@ export default async function Home() {
       items,
       openedAt: order ? order.createdAt.toISOString() : null,
       waiter: order?.user?.name ?? null,
+      label: order?.name ?? null,
       ready: readyByTable.get(t.id) ?? 0,
       shape: normalizeShape(t.shape),
       seats: t.seats,
@@ -63,7 +64,29 @@ export default async function Home() {
     };
   });
 
-  const counter = mapped.find((t) => t.number === 0) ?? null;
+  const counterRow = mapped.find((t) => t.number === 0) ?? null;
+
+  // Para llevar: puede haber varios pedidos a la vez; se resumen en la tarjeta del mostrador.
+  const takeouts = counterRow
+    ? await prisma.order.findMany({
+        where: {
+          tableId: counterRow.id,
+          OR: [{ status: "OPEN" }, { kitchenItems: { some: { status: { in: ["PENDING", "READY"] } } } }],
+        },
+        include: { items: true, kitchenItems: true },
+      })
+    : [];
+  const counter: FloorTable | null = counterRow
+    ? {
+        ...counterRow,
+        items: takeouts.length,
+        occupied: takeouts.length > 0,
+        total: takeouts
+          .filter((o) => o.status === "OPEN")
+          .reduce((s, o) => s + o.items.reduce((a, i) => a + i.price * i.quantity, 0), 0),
+        ready: takeouts.filter((o) => o.kitchenItems.some((k) => k.status === "READY")).length,
+      }
+    : null;
   const dining = mapped.filter((t) => t.number > 0);
 
   return (
