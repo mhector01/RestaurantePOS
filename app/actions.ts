@@ -6,6 +6,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { normalizeShape } from "@/lib/floor";
 import { ADMIN_COOKIE, adminToken, getAdminPassword, isValidAdminToken } from "@/lib/auth";
+import { consumeForSale } from "@/lib/stock";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
 /** Cookie "Secure" solo si la petición llegó por HTTPS (detrás del proxy de Coolify se ve en x-forwarded-proto). */
@@ -313,6 +314,12 @@ export async function markOrderServed(orderId: number) {
 // COBROS
 // ---------------------------------------------------------------------------
 
+/** Texto que acompaña la salida de inventario por venta: "Mesa 4" o "Para llevar · Juan". */
+function saleNote(order: { id: number; name: string | null; table: { number: number } }) {
+  if (order.table.number === 0) return `Para llevar · ${order.name ?? `#${order.id}`}`;
+  return `Mesa ${order.table.number}${order.name ? ` · ${order.name}` : ""}`;
+}
+
 /**
  * Cobra solo las unidades seleccionadas (cuenta dividida).
  */
@@ -324,6 +331,7 @@ export async function processProductPayment(
 ) {
   let totalAmountToPay = 0;
   const ticketItems = [];
+  const soldLines: { productId: number; quantity: number }[] = [];
 
   for (const itemRequest of itemsToPay) {
     const originalItem = await prisma.orderItem.findUnique({
@@ -335,6 +343,7 @@ export async function processProductPayment(
     const qty = Math.min(itemRequest.quantity, originalItem.quantity);
     totalAmountToPay += originalItem.price * qty;
 
+    soldLines.push({ productId: originalItem.productId, quantity: qty });
     ticketItems.push({
       id: originalItem.id,
       quantity: qty,
@@ -356,6 +365,9 @@ export async function processProductPayment(
     data: { orderId, amount: totalAmountToPay, method },
     include: { order: { include: { table: true } } },
   });
+
+  await consumeForSale(orderId, soldLines, saleNote(newPayment.order));
+  revalidatePath("/admin", "layout");
 
   const remainingItems = await prisma.orderItem.count({ where: { orderId } });
   if (remainingItems === 0) {
@@ -392,8 +404,14 @@ export async function processFullPayment(orderId: number, mesaId: number, method
 
   await prisma.order.update({ where: { id: orderId }, data: { status: "PAID" } });
   await prisma.table.update({ where: { id: mesaId }, data: { status: "FREE" } });
+  await consumeForSale(
+    orderId,
+    order.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+    saleNote(payment.order)
+  );
 
   refreshTable(mesaId);
+  revalidatePath("/admin", "layout");
   return { ...payment, remainingItems: 0 };
 }
 

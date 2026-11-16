@@ -63,6 +63,8 @@ interface Props {
   takeout?: boolean;
   /** Si el pedido ya se cerró, se muestra esto en lugar del menú (el diálogo de cobro sigue montado). */
   closed?: React.ReactNode;
+  /** Productos con algún insumo agotado según el inventario (se avisa, pero se pueden vender). */
+  soldOut?: number[];
 }
 
 type OptimisticAction =
@@ -104,7 +106,9 @@ export function OrderWorkspace({
   kitchen = {},
   takeout = false,
   closed,
+  soldOut = [],
 }: Props) {
+  const soldOutSet = useMemo(() => new Set(soldOut), [soldOut]);
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [optimisticItems, applyOptimistic] = useOptimistic(items, (state: OrderLine[], action: OptimisticAction) => {
@@ -178,6 +182,7 @@ export function OrderWorkspace({
 
   const add = (p: MenuProduct) =>
     startTransition(async () => {
+      if (soldOutSet.has(p.id)) toast.warning(`Ojo: el inventario indica que ${p.name} no tiene insumos. Confirma con cocina.`);
       applyOptimistic({ type: "add", product: p });
       const res = await addProductToOrder(mesaId, p.id, takeout && orderId ? orderId : undefined);
       if (res?.error) toast.error(res.error);
@@ -447,7 +452,8 @@ export function OrderWorkspace({
                       onClick={() => add(p)}
                       className={cn(
                         "w-full text-left rounded-2xl border bg-card overflow-hidden min-h-36 flex flex-col transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 hover:border-primary/40 active:scale-[0.97]",
-                        qty > 0 && "border-primary/70 ring-2 ring-primary/25"
+                        qty > 0 && "border-primary/70 ring-2 ring-primary/25",
+                        soldOutSet.has(p.id) && qty === 0 && "opacity-60"
                       )}
                     >
                       <span className={cn("h-1.5 w-full", st.bar)} />
@@ -456,6 +462,11 @@ export function OrderWorkspace({
                           {initials(p.name)}
                         </span>
                         <span className="mt-2.5 font-medium leading-snug line-clamp-2">{p.name}</span>
+                        {soldOutSet.has(p.id) && (
+                          <span className="mt-1 self-start text-[11px] font-semibold rounded-full px-2 py-0.5 bg-red-500/15 text-red-300">
+                            Sin stock
+                          </span>
+                        )}
                         <span className="mt-auto pt-2 flex items-end justify-between gap-2">
                           <span className="text-lg font-bold tabular">{formatMoney(p.price)}</span>
                           <span className="size-9 rounded-full bg-primary text-primary-foreground grid place-items-center shadow-md shadow-primary/30">

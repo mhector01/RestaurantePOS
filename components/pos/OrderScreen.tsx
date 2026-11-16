@@ -7,6 +7,7 @@ import { OrderNameEditor } from "@/components/pos/OrderNameEditor";
 import { KitchenReadyBanner } from "@/components/pos/KitchenReadyBanner";
 import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { formatElapsed } from "@/lib/config";
+import { outOfStockProductIds } from "@/lib/stock";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -21,13 +22,14 @@ interface Props {
 export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter }: Props) {
   const takeout = takeoutOrderId !== undefined;
 
-  const [productos, categorias, order] = await Promise.all([
+  const [productos, categorias, order, soldOut] = await Promise.all([
     prisma.product.findMany({ orderBy: { name: "asc" } }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
     prisma.order.findFirst({
       where: takeout ? { id: takeoutOrderId } : { tableId, status: "OPEN" },
       include: { items: { include: { product: true }, orderBy: { id: "asc" } }, payments: true, user: true },
     }),
+    outOfStockProductIds(),
   ]);
 
   // Mesas: lo de cocina de cualquier cuenta de la mesa (puede haber algo listo de una cuenta ya cobrada).
@@ -144,6 +146,7 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
           quantity: i.quantity,
         }))}
         paid={paid}
+        soldOut={soldOut}
       />
     </div>
   );

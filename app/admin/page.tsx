@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, Banknote, Clock, CreditCard, Receipt, TrendingUp, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, Clock, CreditCard, Receipt, TrendingUp, UserRound } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { getDailySales } from "@/app/actions";
 import { PageHeader } from "@/components/admin/AdminNav";
 import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { formatElapsed, formatMoney } from "@/lib/config";
+import { formatQty, stockLevel } from "@/lib/inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ function greeting() {
 }
 
 export default async function AdminDashboard() {
-  const [ventas, openOrders, tableCount] = await Promise.all([
+  const [ventas, openOrders, tableCount, ingredients] = await Promise.all([
     getDailySales(),
     prisma.order.findMany({
       where: { status: "OPEN", items: { some: {} } },
@@ -24,7 +25,13 @@ export default async function AdminDashboard() {
       orderBy: { createdAt: "asc" },
     }),
     prisma.table.count({ where: { number: { gt: 0 } } }),
+    prisma.ingredient.findMany({
+      where: { active: true },
+      select: { id: true, name: true, unit: true, stock: true, minStock: true },
+      orderBy: { stock: "asc" },
+    }),
   ]);
+  const lowStock = ingredients.filter((i) => stockLevel(i.stock, i.minStock) !== "ok");
 
   const avg = ventas.transacciones > 0 ? ventas.total / ventas.transacciones : 0;
   const pending = openOrders.reduce(
@@ -48,6 +55,36 @@ export default async function AdminDashboard() {
         <Kpi label="Ticket promedio" value={formatMoney(avg)} Icon={Receipt} />
         <Kpi label="Por cobrar ahora" value={formatMoney(pending)} Icon={Clock} />
       </div>
+
+      {/* Alerta de inventario */}
+      {lowStock.length > 0 && (
+        <section className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-5">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="font-semibold flex items-center gap-2">
+              <AlertTriangle className="size-5 text-amber-300" />
+              {lowStock.length} insumo{lowStock.length === 1 ? "" : "s"} por reponer
+            </h2>
+            <Link href="/admin/inventario?filtro=reponer" className="text-sm font-medium text-primary inline-flex items-center gap-1 shrink-0">
+              Ver lista de compras <ArrowRight className="size-4" />
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {lowStock.slice(0, 10).map((i) => (
+              <span
+                key={i.id}
+                className={
+                  i.stock <= 0
+                    ? "text-xs rounded-full px-2.5 py-1 bg-red-500/15 text-red-300"
+                    : "text-xs rounded-full px-2.5 py-1 bg-amber-400/15 text-amber-200"
+                }
+              >
+                {i.name} · {i.stock <= 0 ? "agotado" : formatQty(i.stock, i.unit)}
+              </span>
+            ))}
+            {lowStock.length > 10 && <span className="text-xs text-muted-foreground px-1 py-1">y {lowStock.length - 10} más</span>}
+          </div>
+        </section>
+      )}
 
       {/* Efectivo vs tarjeta */}
       <section className="mt-4 rounded-2xl border bg-card p-5">

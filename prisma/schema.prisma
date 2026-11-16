@@ -54,6 +54,7 @@ model Product {
   
   orderItems   OrderItem[]
   kitchenItems KitchenItem[]
+  recipe       RecipeItem[] // Insumos que se descuentan del inventario al venderlo
   createdAt    DateTime    @default(now())
 }
 
@@ -118,4 +119,99 @@ model User {
   role      String   @default("WAITER") // WAITER o ADMIN
   orders    Order[]
   createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// INVENTARIO
+// ---------------------------------------------------------------------------
+
+model Supplier {
+  id          Int          @id @default(autoincrement())
+  name        String
+  contact     String?
+  phone       String?
+  email       String?
+  taxId       String?      // RTN
+  notes       String?
+  active      Boolean      @default(true)
+  purchases   Purchase[]
+  ingredients Ingredient[] // Insumos que se le compran normalmente
+  createdAt   DateTime     @default(now())
+}
+
+// Insumo / materia prima (o producto de reventa como una gaseosa)
+model Ingredient {
+  id         Int       @id @default(autoincrement())
+  name       String    @unique
+  unit       String    @default("unid") // kg, g, lb, oz, l, ml, unid
+  stock      Float     @default(0)
+  minStock   Float     @default(0) // Punto de reorden: avisar cuando baje de aquí
+  maxStock   Float?    // Stock ideal: hasta dónde reponer al comprar
+  cost       Float     @default(0) // Costo promedio por unidad
+  supplierId Int?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  active     Boolean   @default(true)
+
+  recipeItems   RecipeItem[]
+  purchaseItems PurchaseItem[]
+  movements     StockMovement[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Receta: cuánto de cada insumo lleva una unidad del producto
+model RecipeItem {
+  id           Int        @id @default(autoincrement())
+  productId    Int
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredientId Int
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Float
+
+  @@unique([productId, ingredientId])
+}
+
+model Purchase {
+  id         Int            @id @default(autoincrement())
+  supplierId Int?
+  supplier   Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  invoice    String?        // Número de factura del proveedor
+  date       DateTime       @default(now())
+  total      Float
+  paid       Boolean        @default(true) // false = a crédito, pendiente de pagar
+  paidAt     DateTime?
+  status     String         @default("RECEIVED") // RECEIVED o VOID (anulada)
+  notes      String?
+  items      PurchaseItem[]
+  createdAt  DateTime       @default(now())
+
+  @@index([date])
+}
+
+model PurchaseItem {
+  id           Int        @id @default(autoincrement())
+  purchaseId   Int
+  purchase     Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  ingredientId Int
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Float
+  unitCost     Float
+}
+
+// Kardex: cada entrada o salida de un insumo
+model StockMovement {
+  id           Int        @id @default(autoincrement())
+  ingredientId Int
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  type         String     // PURCHASE, SALE, WASTE, COUNT, INITIAL, VOID
+  quantity     Float      // + entra, - sale
+  stockAfter   Float
+  unitCost     Float      // Costo por unidad al momento del movimiento
+  note         String?
+  purchaseId   Int?
+  orderId      Int?
+  createdAt    DateTime   @default(now())
+
+  @@index([ingredientId, createdAt])
+  @@index([type, createdAt])
 }

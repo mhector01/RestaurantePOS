@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Armchair, ChefHat, LayoutDashboard, LogOut, Store, UsersRound, UtensilsCrossed, Wallet } from "lucide-react";
+import { Armchair, ChefHat, LayoutDashboard, LogOut, Package, Store, UsersRound, UtensilsCrossed, Wallet } from "lucide-react";
 import { logoutAdmin } from "@/app/actions";
 import { cn } from "@/lib/utils";
 import { BrandLogo, BrandMark } from "@/components/Brand";
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/admin", label: "Resumen", Icon: LayoutDashboard },
   { href: "/admin/reportes", label: "Caja", Icon: Wallet },
   { href: "/admin/productos", label: "Menú", Icon: UtensilsCrossed },
+  { href: "/admin/inventario", label: "Inventario", Icon: Package },
   { href: "/admin/mesas", label: "Plano", Icon: Armchair },
   { href: "/admin/usuarios", label: "Personal", Icon: UsersRound },
 ];
@@ -21,7 +22,23 @@ function useActive() {
 }
 
 /** Menú lateral (tablet/escritorio). */
-export function AdminSidebar({ business }: { business: string }) {
+/** Número rojo con los insumos en stock bajo o agotados. */
+function AlertBadge({ count, className }: { count: number; className?: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      title={`${count} insumo${count === 1 ? "" : "s"} con stock bajo`}
+      className={cn(
+        "min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold grid place-items-center tabular",
+        className
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+export function AdminSidebar({ business, stockAlerts = 0 }: { business: string; stockAlerts?: number }) {
   const isActive = useActive();
   return (
     <aside className="hidden md:flex w-60 lg:w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground h-dvh sticky top-0">
@@ -45,7 +62,8 @@ export function AdminSidebar({ business }: { business: string }) {
             )}
           >
             <Icon className={cn("size-5", isActive(href) && "text-primary")} />
-            {label}
+            <span className="flex-1">{label}</span>
+            {href === "/admin/inventario" && <AlertBadge count={stockAlerts} />}
           </Link>
         ))}
       </nav>
@@ -77,7 +95,7 @@ export function AdminSidebar({ business }: { business: string }) {
 }
 
 /** Barra superior + navegación inferior (celular). */
-export function AdminMobileNav({ business }: { business: string }) {
+export function AdminMobileNav({ business, stockAlerts = 0 }: { business: string; stockAlerts?: number }) {
   const isActive = useActive();
   return (
     <>
@@ -94,18 +112,19 @@ export function AdminMobileNav({ business }: { business: string }) {
         </form>
       </header>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t grid grid-cols-5 pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t grid grid-cols-6 pb-[env(safe-area-inset-bottom)]">
         {NAV.map(({ href, label, Icon }) => (
           <Link
             key={href}
             href={href}
             className={cn(
-              "h-16 flex flex-col items-center justify-center gap-1 text-[11px] font-medium",
+              "relative h-16 flex flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium",
               isActive(href) ? "text-primary" : "text-muted-foreground"
             )}
           >
             <Icon className="size-5" />
             {label}
+            {href === "/admin/inventario" && <AlertBadge count={stockAlerts} className="absolute top-1.5 left-1/2 ml-1" />}
           </Link>
         ))}
       </nav>
