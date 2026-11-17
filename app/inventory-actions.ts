@@ -212,6 +212,7 @@ export interface PurchaseInput {
   date?: string; // YYYY-MM-DD
   paid: boolean;
   notes?: string;
+  tax?: number; // ISV de la factura (crédito fiscal)
   items: { ingredientId: number; quantity: number; unitCost: number }[];
 }
 
@@ -234,6 +235,7 @@ export async function createPurchase(input: PurchaseInput): Promise<Result & { i
         invoice: text(input.invoice),
         date,
         total,
+        tax: Math.max(0, Math.min(total, Math.round(num(input.tax) * 100) / 100)),
         paid: input.paid,
         paidAt: input.paid ? new Date() : null,
         notes: text(input.notes),
@@ -401,6 +403,18 @@ export async function setProductStockControl(
     await tx.recipeItem.deleteMany({ where: { productId } });
     await tx.recipeItem.create({ data: { productId, ingredientId: ing.id, quantity: 1 } });
   });
+  refreshInventory();
+  return { success: true };
+}
+
+/** Corrige el ISV (crédito fiscal) de una compra ya registrada. */
+export async function setPurchaseTax(id: number, tax: number): Promise<Result> {
+  await requireAdmin();
+  const p = await prisma.purchase.findUnique({ where: { id } });
+  if (!p) return { success: false, error: "La compra no existe" };
+  const value = Math.round(num(tax) * 100) / 100;
+  if (value < 0 || value > p.total) return { success: false, error: "El ISV no puede ser mayor que el total" };
+  await prisma.purchase.update({ where: { id }, data: { tax: value } });
   refreshInventory();
   return { success: true };
 }

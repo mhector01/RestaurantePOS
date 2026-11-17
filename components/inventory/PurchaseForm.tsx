@@ -67,6 +67,7 @@ export function PurchaseForm({
   const [date, setDate] = useState(today);
   const [paid, setPaid] = useState(true);
   const [notes, setNotes] = useState("");
+  const [tax, setTax] = useState("");
   const [lines, setLines] = useState<Line[]>(() => initialLines.map((l) => lineFor(l.ingredientId, l.quantity)));
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
@@ -123,7 +124,7 @@ export function PurchaseForm({
     if (bad) return toast.error(`Falta la cantidad de ${byId.get(bad.ingredientId)?.name}`);
     setSaving(true);
     try {
-      const res = await createPurchase({ supplierId, invoice, date, paid, notes, items });
+      const res = await createPurchase({ supplierId, invoice, date, paid, notes, items, tax: parseQty(tax || "0") || 0 });
       if (!res.success) return toast.error(res.error ?? "No se pudo registrar");
       toast.success(`Compra registrada por ${formatMoney(total)}. El stock ya se actualizó.`);
       router.push("/admin/inventario/compras");
@@ -303,6 +304,33 @@ export function PurchaseForm({
           <p className="text-xs text-muted-foreground mt-1">
             {lines.length} insumo{lines.length === 1 ? "" : "s"} · {paid ? "Pagada" : "Queda pendiente de pago"}
           </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pf-tax">ISV de la factura</Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{BUSINESS.currency}</span>
+            <Input
+              id="pf-tax"
+              inputMode="decimal"
+              value={tax}
+              onChange={(e) => setTax(e.target.value.replace(/[^\d.,]/g, ""))}
+              placeholder="0.00"
+              className="h-11 rounded-xl pl-8 tabular"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">Crédito fiscal para la declaración. 0 si la factura no trae ISV.</p>
+            {total > 0 && (
+              <button
+                type="button"
+                onClick={() => setTax((total - total / 1.15).toFixed(2))}
+                className="text-xs font-medium text-primary whitespace-nowrap"
+                title="Si todo lo comprado lleva 15% incluido en el total"
+              >
+                Calcular 15%
+              </button>
+            )}
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="pf-notes">Notas</Label>

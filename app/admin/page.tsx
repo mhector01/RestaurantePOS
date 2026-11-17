@@ -109,7 +109,7 @@ export default async function AdminDashboard() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold">Formas de pago de hoy</h2>
           <Link href="/admin/reportes" className="text-sm font-medium text-primary inline-flex items-center gap-1">
-            Ver caja <ArrowRight className="size-4" />
+            Ver reportes <ArrowRight className="size-4" />
           </Link>
         </div>
         <div className="h-3 rounded-full bg-muted overflow-hidden flex">

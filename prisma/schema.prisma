@@ -153,6 +153,7 @@ model Payment {
   amount    Float    // Monto para dividir cuenta
   method    String   // CASH, CARD, etc.
   invoices  Invoice[]
+  saleLines SaleLine[]
   createdAt DateTime @default(now())
 }
 
@@ -222,6 +223,7 @@ model Purchase {
   invoice    String?        // Número de factura del proveedor
   date       DateTime       @default(now())
   total      Float
+  tax        Float          @default(0)    // ISV pagado en la factura del proveedor (crédito fiscal)
   paid       Boolean        @default(true) // false = a crédito, pendiente de pagar
   paidAt     DateTime?
   status     String         @default("RECEIVED") // RECEIVED o VOID (anulada)
@@ -323,4 +325,32 @@ model Invoice {
 
   @@index([createdAt])
   @@index([paymentId])
+}
+
+// ---------------------------------------------------------------------------
+// REPORTES: cada producto cobrado queda registrado tal como se vendió
+// (los cobros divididos borran líneas de la cuenta, así que esto es la fuente de verdad)
+// ---------------------------------------------------------------------------
+
+model SaleLine {
+  id           Int      @id @default(autoincrement())
+  paymentId    Int
+  payment      Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderId      Int
+  productId    Int?
+  name         String
+  categoryName String
+  isCombo      Boolean  @default(false)
+  quantity     Int
+  unitPrice    Float    // Con ISV
+  total        Float    // Con ISV
+  net          Float    // Sin ISV
+  tax          Float    // ISV
+  cost         Float    @default(0) // Costo de insumos según receta al momento de vender
+  waiterName   String?
+  channel      String   // MESA o LLEVAR
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([productId])
 }

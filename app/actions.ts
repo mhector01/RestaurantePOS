@@ -10,6 +10,7 @@ import { consumeForSale } from "@/lib/stock";
 import { expandSoldLines, loadCombo, partsLabel, resolveCombo, type ComboSelection } from "@/lib/combos";
 import { buildInvoiceLines, issueInvoice, type SoldItem } from "@/lib/invoicing";
 import { normalizeRtn, normalizeTaxRate } from "@/lib/fiscal";
+import { recordSales } from "@/lib/sales";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
 /** Cookie "Secure" solo si la petición llegó por HTTPS (detrás del proxy de Coolify se ve en x-forwarded-proto). */
@@ -431,11 +432,13 @@ export async function processProductPayment(
   });
 
   await consumeForSale(orderId, expandSoldLines(soldLines), saleNote(newPayment.order));
+  const invoiceLines = await buildInvoiceLines(soldItems);
+  await recordSales({ paymentId: newPayment.id, orderId, items: soldItems, lines: invoiceLines });
   const { invoice, warning: invoiceWarning } = await issueInvoice({
     paymentId: newPayment.id,
     orderId,
     method,
-    lines: await buildInvoiceLines(soldItems),
+    lines: invoiceLines,
     customer: invoiceCustomer,
   });
   revalidatePath("/admin", "layout");
@@ -484,20 +487,21 @@ export async function processFullPayment(orderId: number, mesaId: number, method
     saleNote(payment.order)
   );
 
+  const soldItems: SoldItem[] = payment.order.items.map((i) => ({
+    productId: i.productId,
+    name: i.product.name,
+    quantity: i.quantity,
+    price: i.price,
+    detail: partsLabel(i.parts) || null,
+    parts: i.parts,
+  }));
+  const invoiceLines = await buildInvoiceLines(soldItems);
+  await recordSales({ paymentId: payment.id, orderId, items: soldItems, lines: invoiceLines });
   const { invoice, warning: invoiceWarning } = await issueInvoice({
     paymentId: payment.id,
     orderId,
     method,
-    lines: await buildInvoiceLines(
-      payment.order.items.map((i) => ({
-        productId: i.productId,
-        name: i.product.name,
-        quantity: i.quantity,
-        price: i.price,
-        detail: partsLabel(i.parts) || null,
-        parts: i.parts,
-      }))
-    ),
+    lines: invoiceLines,
     customer: invoiceCustomer,
   });
 
@@ -853,6 +857,6 @@ export async function closeRegister() {
     where: { status: "PAID" },
     data: { status: "CLOSED" },
   });
-  revalidatePath("/admin/reportes");
+  revalidatePath("/admin/reportes", "layout");
   revalidatePath("/admin");
 }

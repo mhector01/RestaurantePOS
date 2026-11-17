@@ -188,10 +188,13 @@ export default async function ComprasPage({ searchParams }: { searchParams: Prom
                         ))}
                       </tbody>
                     </table>
-                    {p.notes && <p className="text-sm text-muted-foreground mt-2">Nota: {p.notes}</p>}
+                    <p className="text-sm text-muted-foreground mt-2 tabular">
+                      ISV de la factura: {p.tax > 0 ? formatMoney(p.tax) : "no registrado"}
+                    </p>
+                    {p.notes && <p className="text-sm text-muted-foreground mt-1">Nota: {p.notes}</p>}
                     {!voided && (
                       <div className="flex justify-end mt-3">
-                        <PurchaseActions id={p.id} paid={p.paid} total={formatMoney(p.total)} />
+                        <PurchaseActions id={p.id} paid={p.paid} total={formatMoney(p.total)} tax={p.tax} />
                       </div>
                     )}
                   </div>

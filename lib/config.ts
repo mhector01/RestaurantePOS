@@ -9,7 +9,10 @@ export const BUSINESS = {
 };
 
 export function formatMoney(value: number) {
-  return `${BUSINESS.currency}${value.toLocaleString(BUSINESS.locale, {
+  // Redondeado a centavos para no mostrar "-0.00"
+  const cents = Math.round(value * 100);
+  const sign = cents < 0 ? "−" : "";
+  return `${sign}${BUSINESS.currency}${(Math.abs(cents) / 100).toLocaleString(BUSINESS.locale, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

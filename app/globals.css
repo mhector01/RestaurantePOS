@@ -67,6 +67,15 @@
   --accent-foreground: oklch(0.92 0.07 60);
   --destructive: oklch(0.66 0.21 25);
   --success: oklch(0.72 0.16 155);
+  /* Series de gráficos (validadas para daltonismo y contraste sobre la tarjeta oscura) */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #0ca30c;
+  --series-7: #9085e9;
+  --series-8: #e66767;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.7 0.18 50);
@@ -158,5 +167,38 @@
   }
   @page {
     margin: 3mm;
+  }
+
+  /* Reportes: hoja completa, en claro */
+  html.print-report body * {
+    visibility: visible;
+  }
+  html.print-report .print-area,
+  html.print-report aside,
+  html.print-report nav,
+  html.print-report .print\:hidden {
+    display: none !important;
+  }
+  html.print-report {
+    --background: #fff;
+    --foreground: #111;
+    --card: #fff;
+    --card-foreground: #111;
+    --popover: #fff;
+    --muted: #f1f1f1;
+    --muted-foreground: #555;
+    --border: #d4d4d4;
+    color-scheme: light;
+  }
+  html.print-report body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  html.print-report main {
+    max-width: none !important;
+    padding: 6mm !important;
+  }
+  html.print-report .break-inside-avoid {
+    break-inside: avoid;
   }
 }

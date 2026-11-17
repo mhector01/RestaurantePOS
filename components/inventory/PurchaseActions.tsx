@@ -1,16 +1,48 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Ban, CircleCheck, Loader2 } from "lucide-react";
-import { setPurchasePaid, voidPurchase } from "@/app/inventory-actions";
+import { Ban, CircleCheck, Loader2, Percent } from "lucide-react";
+import { setPurchasePaid, setPurchaseTax, voidPurchase } from "@/app/inventory-actions";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/pos/ConfirmAction";
 
-export function PurchaseActions({ id, paid, total }: { id: number; paid: boolean; total: string }) {
+export function PurchaseActions({ id, paid, total, tax }: { id: number; paid: boolean; total: string; tax: number }) {
   const [pending, startTransition] = useTransition();
+  const [editTax, setEditTax] = useState<string | null>(null);
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {editTax === null ? (
+        <Button variant="ghost" size="sm" className="h-9 rounded-lg" onClick={() => setEditTax(tax ? String(tax) : "")}>
+          <Percent className="size-4" /> ISV
+        </Button>
+      ) : (
+        <form
+          className="flex items-center gap-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            startTransition(async () => {
+              const res = await setPurchaseTax(id, parseFloat(editTax.replace(",", ".")) || 0);
+              if (!res.success) return void toast.error(res.error ?? "No se pudo guardar");
+              toast.success("ISV de la compra actualizado");
+              setEditTax(null);
+            });
+          }}
+        >
+          <input
+            autoFocus
+            inputMode="decimal"
+            value={editTax}
+            onChange={(e) => setEditTax(e.target.value.replace(/[^\d.,]/g, ""))}
+            placeholder="ISV"
+            aria-label="ISV de la factura de compra"
+            className="w-24 h-9 rounded-lg border bg-card px-2 text-sm tabular outline-none focus:border-primary"
+          />
+          <Button type="submit" size="sm" className="h-9 rounded-lg" disabled={pending}>
+            Guardar
+          </Button>
+        </form>
+      )}
       {!paid && (
         <Button
           size="sm"

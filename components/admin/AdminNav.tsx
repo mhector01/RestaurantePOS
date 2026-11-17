@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Armchair, ChefHat, FileText, LayoutDashboard, LogOut, Package, Store, UsersRound, UtensilsCrossed, Wallet } from "lucide-react";
+import { Armchair, BarChart3, ChefHat, FileText, LayoutDashboard, LogOut, Package, Store, UsersRound, UtensilsCrossed } from "lucide-react";
 import { logoutAdmin } from "@/app/actions";
 import { cn } from "@/lib/utils";
 import { BrandLogo, BrandMark } from "@/components/Brand";
 
 const NAV = [
   { href: "/admin", label: "Resumen", Icon: LayoutDashboard },
-  { href: "/admin/reportes", label: "Caja", Icon: Wallet },
+  { href: "/admin/reportes", label: "Reportes", Icon: BarChart3 },
   { href: "/admin/productos", label: "Menú", Icon: UtensilsCrossed },
   { href: "/admin/inventario", label: "Inventario", Icon: Package },
   { href: "/admin/facturacion", label: "Facturas", Icon: FileText },
