@@ -17,6 +17,17 @@ export function tenantSlugFromHost(host: string | null | undefined): string | nu
   return sub;
 }
 
+/**
+ * ¿Esta dirección puede abrir el panel de la plataforma (/plataforma)?
+ * Con PLATFORM_HOST, solo esa; si no, cualquier dirección sin subdominio de restaurante.
+ */
+export function isPlatformHost(host: string | null | undefined) {
+  const h = (host ?? "").split(":")[0].trim().toLowerCase();
+  const only = process.env.PLATFORM_HOST?.split(":")[0].trim().toLowerCase();
+  if (only) return h === only;
+  return !!h && tenantSlugFromHost(h) === null;
+}
+
 /** Slug válido para un subdominio: minúsculas, números y guiones. */
 export function normalizeSlug(value: string) {
   const s = value

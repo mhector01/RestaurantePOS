@@ -11,15 +11,17 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Restaurant {
-  id        Int      @id @default(autoincrement())
-  slug      String   @unique // Subdominio: <slug>.tudominio.com
-  name      String   @default("") // Vacío = se usa NEXT_PUBLIC_BUSINESS_NAME
-  address   String   @default("")
-  taxId     String   @default("") // RTN que se imprime en el ticket
-  phone     String   @default("") // Teléfono que se imprime en el ticket
-  status    String   @default("ACTIVE") // ACTIVE o SUSPENDED
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique // Subdominio: <slug>.tudominio.com
+  name        String    @default("") // Vacío = se usa NEXT_PUBLIC_BUSINESS_NAME
+  address     String    @default("")
+  taxId       String    @default("") // RTN que se imprime en el ticket
+  phone       String    @default("") // Teléfono que se imprime en el ticket
+  status      String    @default("ACTIVE") // ACTIVE o SUSPENDED
+  suspendedAt DateTime?
+  notes       String    @default("") // Notas internas de la plataforma (contacto, plan, acuerdos…); el restaurante no las ve
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   areas          Area[]
   tables         Table[]
@@ -508,4 +510,34 @@ model Session {
 
   @@index([accountId])
   @@index([restaurantId])
+}
+
+// ---------------------------------------------------------------------------
+// PLATAFORMA: el equipo que administra Ristemo (crea y suspende restaurantes).
+// No pertenecen a ningún restaurante y entran por /plataforma en el dominio principal.
+// ---------------------------------------------------------------------------
+
+model PlatformUser {
+  id                 Int               @id @default(autoincrement())
+  name               String
+  email              String            @unique // En minúsculas
+  passwordHash       String
+  mustChangePassword Boolean           @default(false)
+  active             Boolean           @default(true)
+  lastLoginAt        DateTime?
+  sessions           PlatformSession[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
+model PlatformSession {
+  id         String       @id // sha256 del token de la cookie
+  userId     Int
+  user       PlatformUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent  String       @default("")
+  expiresAt  DateTime
+  lastSeenAt DateTime     @default(now())
+  createdAt  DateTime     @default(now())
+
+  @@index([userId])
 }

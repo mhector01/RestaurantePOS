@@ -25,8 +25,17 @@ Una sola instalación atiende a varios restaurantes. Cada uno entra por su subdo
 - El aislamiento es automático: el cliente de Prisma (`lib/prisma.ts`) filtra y firma cada consulta con el restaurante de la petición (`lib/tenant.ts`). Para tareas de la plataforma existe `rootPrisma` (`lib/prisma-base.ts`), sin filtro.
 - Segunda barrera en PostgreSQL: los triggers `tenant_guard` impiden que una fila apunte a otra de un restaurante distinto, y un INSERT sin restaurante falla.
 - Una dirección sin subdominio (o con `www`) abre el restaurante por defecto; un subdominio que no existe muestra "Restaurante no encontrado". Un restaurante con `status = SUSPENDED` queda bloqueado.
-- Crear un restaurante con su dueño: `node scripts/nuevo-restaurante.mjs <slug> "<Nombre>" <correo-del-dueño>`. Imprime una contraseña temporal; el dueño pone la suya al entrar. En Coolify se corre desde la terminal del contenedor. Para probar en tu compu entra a `http://<slug>.localhost:3000`.
-- Dueño que olvidó su contraseña: `node scripts/acceso-dueno.mjs <slug> <correo>` le asigna una temporal nueva (o crea otro dueño). El restaurante sin subdominio es `principal`.
+- Los restaurantes se crean y se suspenden desde el panel de la plataforma (abajo). Para probar en tu compu entra a `http://<slug>.localhost:3000`.
+
+## Plataforma (`/plataforma`)
+
+Panel del equipo que vende y administra Ristemo. Solo abre en el dominio principal (o en `PLATFORM_HOST`), nunca en el subdominio de un restaurante, y usa cuentas propias: una cuenta de restaurante no entra aquí.
+
+- **Restaurantes:** lista con búsqueda, ventas de los últimos 30 días, última venta y alerta de los que dejaron de vender. *Nuevo restaurante* lo crea con la cuenta de su dueño y muestra un mensaje listo para enviar con la dirección, el correo y la contraseña temporal.
+- **Detalle:** nombre, subdominio y notas internas; **suspender / reactivar** (bloquea punto de venta, cocina y panel sin borrar nada); cuentas del restaurante y contraseña temporal nueva para un dueño que olvidó la suya.
+- **Equipo:** quién tiene acceso a la plataforma. **Mi cuenta:** cambiar la contraseña.
+- **Primer usuario:** desde la terminal del contenedor, `node scripts/plataforma-usuario.mjs <correo> "<Nombre>"` (también sirve para recuperar el acceso). Imprime una contraseña temporal.
+- Scripts equivalentes, por si no hay acceso al panel: `node scripts/nuevo-restaurante.mjs <slug> "<Nombre>" <correo-del-dueño>` y `node scripts/acceso-dueno.mjs <slug> <correo>` (el restaurante sin subdominio es `principal`).
 
 ## Acceso al panel
 
@@ -55,6 +64,7 @@ Abre http://localhost:3000. En desarrollo, si no defines `ADMIN_PASSWORD`, la cl
 | `ADMIN_PASSWORD` | Sí (producción) | Clave de instalación: se pide solo para crear la cuenta del dueño en un restaurante que aún no tiene cuentas. Ya no sirve para entrar al panel. |
 | `SESSION_SECRET` | Recomendada | Cadena larga y aleatoria para firmar la cookie de los meseros. |
 | `ROOT_DOMAIN` | Para varios restaurantes | Dominio base de los subdominios, p. ej. `ristemo.com` → `<slug>.ristemo.com`. |
+| `PLATFORM_HOST` | No | Única dirección donde abre `/plataforma` (p. ej. `ristemo.com`). Si no se define, abre en cualquier dirección sin subdominio de restaurante. |
 | `DEFAULT_RESTAURANT` | No | Slug del restaurante que abre la dirección sin subdominio. Por defecto, el primero (`principal`). |
 | `TZ` | No | Zona horaria para "ventas de hoy" y horas del ticket. Por defecto `America/Tegucigalpa`. |
 | `NEXT_PUBLIC_BUSINESS_NAME` | No | Nombre del negocio (ticket y título) si el restaurante no tiene uno propio. **Build variable.** |
@@ -70,7 +80,18 @@ Las `NEXT_PUBLIC_*` se incrustan al compilar: si las cambias hay que volver a de
 1. **Base de datos:** en el proyecto, *+ New → Database → PostgreSQL*. Copia su URL interna (*Postgres URL (internal)*).
 2. **Aplicación:** *+ New → Application* desde el repositorio de GitHub, rama `main`, **Build Pack: Dockerfile**. Puerto expuesto: `3000`.
 3. **Variables:** agrega `DATABASE_URL` (la URL interna del paso 1), `ADMIN_PASSWORD`, `SESSION_SECRET` y, si quieres, las `NEXT_PUBLIC_*` marcadas como *Build Variable*.
-4. **Dominio:** asígnale un dominio con HTTPS (Coolify genera el certificado). Para varios restaurantes, agrega también el comodín `https://*.tudominio.com`, crea en tu DNS un registro `*` que apunte al servidor y define `ROOT_DOMAIN`. El certificado comodín requiere el reto DNS de Let's Encrypt en el proxy de Coolify.
+4. **Dominio:** asígnale un dominio con HTTPS (Coolify genera el certificado). Para varios restaurantes, mira *Subdominios de los restaurantes*.
 5. **Deploy.** Al arrancar, el contenedor aplica las migraciones pendientes (`prisma migrate deploy`) y luego inicia el servidor.
 
 La base empieza vacía: entra a `/admin` y crea mesas, categorías, productos y meseros.
+
+### Subdominios de los restaurantes
+
+Ejemplo con `ristemo.com`; cambia por tu dominio.
+
+1. **DNS:** en tu proveedor de dominio crea un registro `A` con nombre `*` (comodín) que apunte a la IP del servidor de Coolify, además del registro del dominio principal. Así cualquier `algo.ristemo.com` llega al servidor.
+2. **Variable:** agrega `ROOT_DOMAIN=ristemo.com` a la aplicación (y, si quieres, `PLATFORM_HOST=ristemo.com`).
+3. **Dominios en Coolify** — elige una forma:
+   - **Simple (pocos restaurantes):** en *Domains* de la aplicación agrega cada restaurante separado por coma: `https://ristemo.com,https://elfogon.ristemo.com,https://laesquina.ristemo.com`, y vuelve a desplegar. Coolify saca un certificado por cada uno sin configurar nada más. La página de cada restaurante en la plataforma te muestra la dirección exacta para copiar.
+   - **Comodín (muchos restaurantes):** agrega `https://*.ristemo.com` una sola vez. El certificado comodín de Let's Encrypt exige el reto por DNS: en *Servers → Proxy* configura Traefik con el proveedor DNS de tu dominio (por ejemplo, Cloudflare con un token de API) según la guía de Coolify para *wildcard certificates*. Con eso los restaurantes nuevos funcionan sin volver a desplegar.
+4. Crea el restaurante en `/plataforma` y prueba su dirección. El restaurante que ya existía sigue abriendo en el dominio principal.

@@ -16,8 +16,11 @@ const ROOT_MODEL = "Restaurant";
 // no dice qué lado guarda la llave, así que se deduce por la convención del proyecto:
 // la relación `category` es "propia" si el modelo tiene el campo `categoryId`.
 const relations = new Map<string, Map<string, Rel>>();
+// Modelos que pertenecen a un restaurante (tienen restaurantId). Los de la plataforma no se filtran.
+const tenantModels = new Set<string>();
 for (const m of Prisma.dmmf.datamodel.models) {
   const scalars = new Set(m.fields.filter((f) => f.kind === "scalar").map((f) => f.name));
+  if (scalars.has(TENANT_FIELD)) tenantModels.add(m.name);
   const rels = new Map<string, Rel>();
   for (const f of m.fields) {
     if (f.kind === "object") rels.set(f.name, { model: f.type, owning: scalars.has(`${f.name}Id`) });
@@ -142,7 +145,7 @@ export function tenantExtension(getRestaurantId: () => Promise<number>) {
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
-          if (model === ROOT_MODEL) return query(args);
+          if (!tenantModels.has(model)) return query(args);
           const rid = await getRestaurantId();
           return query(scopeArgs(model, operation, args as Rec, rid) as typeof args);
         },

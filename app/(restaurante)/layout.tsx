@@ -4,7 +4,7 @@ import { Toaster } from "sonner";
 import { getBusiness, getRestaurant } from "@/lib/tenant";
 import { BusinessProvider } from "@/components/BusinessProvider";
 import { TenantNotice } from "@/components/TenantNotice";
-import "./globals.css";
+import "../globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
