@@ -802,7 +802,7 @@ export async function loginWaiter(pin: string) {
   const key = `pin:${h.get("host")}:${h.get("x-forwarded-for")?.split(",")[0]?.trim() || "local"}`;
   const wait = blockedMinutes(key);
   if (wait) return { error: `Demasiados intentos. Espera ${wait} min.` };
-  const user = /^d{4}$/.test(pin) ? await prisma.user.findFirst({ where: { pin } }) : null;
+  const user = /^\d{4}$/.test(pin) ? await prisma.user.findFirst({ where: { pin } }) : null;
   if (!user) {
     registerFailure(key, PIN_LIMIT);
     return { error: "PIN incorrecto" };
