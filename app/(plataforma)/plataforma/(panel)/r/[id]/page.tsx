@@ -5,6 +5,10 @@ import { rootPrisma } from "@/lib/prisma-base";
 import { defaultRestaurantId, restaurantStats, restaurantUrl } from "@/lib/platform";
 import { formatMoney } from "@/lib/config";
 import { RestaurantAdmin } from "@/components/platform/RestaurantAdmin";
+import { SubscriptionAdmin } from "@/components/platform/SubscriptionAdmin";
+import { billingLabel } from "@/components/platform/BillingBadge";
+import { billingOf, fmtDay, getPlatformSettings } from "@/lib/billing";
+import { isoDay } from "@/lib/period";
 
 export const dynamic = "force-dynamic";
 
@@ -13,16 +17,30 @@ const fmt = (d: Date | null) => (d ? d.toLocaleString("es-HN", { dateStyle: "med
 export default async function RestaurantePlataformaPage({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
-  const [r, stats, defaultId, accounts] = await Promise.all([
+  const [r, stats, defaultId, accounts, plans, settings, subPayments] = await Promise.all([
     rootPrisma.restaurant.findUnique({ where: { id } }),
     restaurantStats([id]),
     defaultRestaurantId(),
     rootPrisma.account.findMany({ where: { restaurantId: id }, orderBy: [{ role: "desc" }, { name: "asc" }] }),
+    rootPrisma.plan.findMany({ orderBy: { position: "asc" } }),
+    getPlatformSettings(),
+    rootPrisma.subscriptionPayment.findMany({ where: { restaurantId: id }, orderBy: { createdAt: "desc" } }),
   ]);
   if (!r) notFound();
   const s = stats.get(id);
   const isDefault = id === defaultId;
   const url = restaurantUrl(r.slug);
+  const billing = billingOf(r.paidUntil, settings.graceDays);
+  const trial = !!r.paidUntil && subPayments.length === 0;
+  const label = billingLabel(billing, { trial, suspended: r.status !== "ACTIVE" });
+  const detail =
+    billing.state === "NONE"
+      ? "No se bloquea por fecha. Registra un pago para empezar a cobrarle."
+      : billing.state === "GRACE"
+        ? `Venció el ${fmtDay(billing.paidUntil!)}. Si no paga, el ${fmtDay(billing.graceUntil!)} es el último día antes del bloqueo.`
+        : billing.state === "EXPIRED"
+          ? `Venció el ${fmtDay(billing.paidUntil!)}. Al registrar un pago se desbloquea.`
+          : `${trial ? "Prueba gratis" : "Pagado"} hasta el ${fmtDay(billing.paidUntil!)}.`;
 
   return (
     <>
@@ -58,6 +76,28 @@ export default async function RestaurantePlataformaPage({ params }: { params: Pr
         <Kpi label="Última venta" value={s.lastSale ? s.lastSale.toLocaleDateString("es-HN", { day: "numeric", month: "short" }) : "—"} sub={fmt(s.lastSale)} />
         <Kpi label="Último ingreso al panel" value={s.lastLogin ? s.lastLogin.toLocaleDateString("es-HN", { day: "numeric", month: "short" }) : "—"} sub={`${s.accounts} cuenta${s.accounts === 1 ? "" : "s"} activa${s.accounts === 1 ? "" : "s"}`} />
         <Kpi label="Configuración" value={`${s.products} productos`} sub={`${s.tables} mesas · ${s.waiters} meseros`} />
+      </div>
+
+      <div className="mb-5">
+        <SubscriptionAdmin
+          restaurantId={r.id}
+          planId={r.planId}
+          plans={plans.map((p) => ({ id: p.id, name: p.name, price: p.price, active: p.active }))}
+          paidUntil={r.paidUntil ? isoDay(r.paidUntil) : null}
+          status={{ text: label.text, detail, tone: label.tone }}
+          payments={subPayments.map((p) => ({
+            id: p.id,
+            amount: p.amount,
+            months: p.months,
+            method: p.method,
+            reference: p.reference,
+            note: p.note,
+            periodFrom: p.periodFrom.toISOString(),
+            periodTo: p.periodTo.toISOString(),
+            recordedBy: p.recordedBy,
+            createdAt: p.createdAt.toISOString(),
+          }))}
+        />
       </div>
 
       <RestaurantAdmin

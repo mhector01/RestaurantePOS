@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { normalizeShape } from "@/lib/floor";
 import { requireAdmin } from "@/lib/session";
+import { planLimitProblem } from "@/lib/subscription";
 import { WAITER_COOKIE, signWaiterId, verifiedWaiterId } from "@/lib/waiter-session";
 import { PIN_LIMIT, blockedMinutes, clearFailures, registerFailure } from "@/lib/rate-limit";
 import { consumeForSale } from "@/lib/stock";
@@ -775,6 +776,8 @@ export async function saveUser(id: number | null, name: string, pin: string) {
   if (id) {
     await prisma.user.update({ where: { id }, data: { name: name.trim(), pin } });
   } else {
+    const limit = await planLimitProblem("waiters");
+    if (limit) return { success: false, error: limit };
     await prisma.user.create({ data: { name: name.trim(), pin } });
   }
   revalidatePath("/admin/usuarios");

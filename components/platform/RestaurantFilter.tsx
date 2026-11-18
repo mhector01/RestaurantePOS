@@ -9,7 +9,9 @@ import { cn } from "@/lib/utils";
 const ESTADOS = [
   { key: "", label: "Todos" },
   { key: "activos", label: "Activos" },
-  { key: "suspendidos", label: "Suspendidos" },
+  { key: "prueba", label: "En prueba" },
+  { key: "por-cobrar", label: "Por cobrar" },
+  { key: "bloqueados", label: "Bloqueados" },
 ];
 
 export function RestaurantFilter({ q, estado }: { q: string; estado: string }) {
@@ -24,7 +26,7 @@ export function RestaurantFilter({ q, estado }: { q: string; estado: string }) {
     router.replace(`/plataforma${p.size ? `?${p}` : ""}`);
   };
   return (
-    <div className="flex flex-col sm:flex-row gap-2 mb-4">
+    <div className="flex flex-col lg:flex-row gap-2 mb-4">
       <form
         className="relative flex-1"
         onSubmit={(e) => {
@@ -42,14 +44,14 @@ export function RestaurantFilter({ q, estado }: { q: string; estado: string }) {
           className="h-11 rounded-xl pl-10"
         />
       </form>
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
         {ESTADOS.map((e) => (
           <button
             key={e.key}
             type="button"
             onClick={() => go({ estado: e.key })}
             className={cn(
-              "h-11 px-3.5 rounded-xl text-sm font-medium border",
+              "h-11 px-3.5 rounded-xl text-sm font-medium border shrink-0",
               estado === e.key ? "bg-primary/15 border-primary/40 text-primary" : "bg-card text-muted-foreground hover:text-foreground"
             )}
           >

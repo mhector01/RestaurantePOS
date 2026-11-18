@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { getBusiness, getRestaurant } from "@/lib/tenant";
 import { BusinessProvider } from "@/components/BusinessProvider";
 import { TenantNotice } from "@/components/TenantNotice";
+import { billingOf, getPlatformSettings } from "@/lib/billing";
 import "../globals.css";
 
 const geistSans = Geist({
@@ -37,14 +38,27 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [restaurant, business] = await Promise.all([getRestaurant(), getBusiness()]);
-  // Dirección sin restaurante, o restaurante suspendido: no se muestra nada de la app.
-  const blocked = !restaurant ? "missing" : restaurant.status !== "ACTIVE" ? "suspended" : null;
+  const [restaurant, business, settings] = await Promise.all([getRestaurant(), getBusiness(), getPlatformSettings()]);
+  // Dirección sin restaurante, restaurante suspendido o con la suscripción vencida: no se muestra nada de la app.
+  const blocked = !restaurant
+    ? "missing"
+    : restaurant.status !== "ACTIVE"
+      ? "suspended"
+      : billingOf(restaurant.paidUntil, settings.graceDays).state === "EXPIRED"
+        ? "expired"
+        : null;
   return (
     <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         {blocked ? (
-          <TenantNotice kind={blocked} />
+          <TenantNotice
+            kind={blocked}
+            support={{
+              instructions: settings.paymentInstructions,
+              phone: settings.supportPhone,
+              email: settings.supportEmail,
+            }}
+          />
         ) : (
           <BusinessProvider value={business}>{children}</BusinessProvider>
         )}

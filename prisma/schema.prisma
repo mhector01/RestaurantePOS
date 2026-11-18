@@ -20,33 +20,40 @@ model Restaurant {
   status      String    @default("ACTIVE") // ACTIVE o SUSPENDED
   suspendedAt DateTime?
   notes       String    @default("") // Notas internas de la plataforma (contacto, plan, acuerdos…); el restaurante no las ve
+  // Suscripción: plan contratado y hasta cuándo está pagado (null = sin vencimiento)
+  planId      Int?
+  plan        Plan?     @relation(fields: [planId], references: [id])
+  paidUntil   DateTime?
+  source      String    @default("PLATAFORMA") // PLATAFORMA (lo creó el equipo) o REGISTRO (se registró solo)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  areas          Area[]
-  tables         Table[]
-  categories     Category[]
-  products       Product[]
-  comboSlots     ComboSlot[]
-  comboOptions   ComboOption[]
-  orders         Order[]
-  orderItems     OrderItem[]
-  orderItemParts OrderItemPart[]
-  kitchenItems   KitchenItem[]
-  payments       Payment[]
-  users          User[]
-  suppliers      Supplier[]
-  ingredients    Ingredient[]
-  recipeItems    RecipeItem[]
-  purchases      Purchase[]
-  purchaseItems  PurchaseItem[]
-  stockMovements StockMovement[]
-  fiscalSettings FiscalSettings?
-  invoiceRanges  InvoiceRange[]
-  invoices       Invoice[]
-  saleLines      SaleLine[]
-  accounts       Account[]
-  sessions       Session[]
+  areas                Area[]
+  tables               Table[]
+  categories           Category[]
+  products             Product[]
+  comboSlots           ComboSlot[]
+  comboOptions         ComboOption[]
+  orders               Order[]
+  orderItems           OrderItem[]
+  orderItemParts       OrderItemPart[]
+  kitchenItems         KitchenItem[]
+  payments             Payment[]
+  users                User[]
+  suppliers            Supplier[]
+  ingredients          Ingredient[]
+  recipeItems          RecipeItem[]
+  purchases            Purchase[]
+  purchaseItems        PurchaseItem[]
+  stockMovements       StockMovement[]
+  fiscalSettings       FiscalSettings?
+  invoiceRanges        InvoiceRange[]
+  invoices             Invoice[]
+  saleLines            SaleLine[]
+  accounts             Account[]
+  sessions             Session[]
+  subscriptionPayments SubscriptionPayment[]
+  loginTickets         LoginTicket[]
 }
 
 // Nuestras tablas
@@ -479,19 +486,20 @@ model SaleLine {
 // ---------------------------------------------------------------------------
 
 model Account {
-  id                 Int        @id @default(autoincrement())
-  restaurantId       Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
-  restaurant         Restaurant @relation(fields: [restaurantId], references: [id])
+  id                 Int           @id @default(autoincrement())
+  restaurantId       Int           @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant         Restaurant    @relation(fields: [restaurantId], references: [id])
   name               String
   email              String // En minúsculas
   passwordHash       String // scrypt, ver lib/password.ts
-  role               String     @default("ADMIN") // OWNER (dueño: maneja cuentas y datos del negocio) o ADMIN
-  active             Boolean    @default(true)
-  mustChangePassword Boolean    @default(false) // Clave temporal: al entrar debe poner una propia
+  role               String        @default("ADMIN") // OWNER (dueño: maneja cuentas y datos del negocio) o ADMIN
+  active             Boolean       @default(true)
+  mustChangePassword Boolean       @default(false) // Clave temporal: al entrar debe poner una propia
   lastLoginAt        DateTime?
   sessions           Session[]
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  loginTickets       LoginTicket[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   @@unique([restaurantId, email])
 }
@@ -540,4 +548,67 @@ model PlatformSession {
   createdAt  DateTime     @default(now())
 
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// SUSCRIPCIONES: planes, pagos de cada restaurante y ajustes de la plataforma
+// ---------------------------------------------------------------------------
+
+model Plan {
+  id          Int          @id @default(autoincrement())
+  name        String
+  price       Float // Precio mensual
+  description String       @default("")
+  maxWaiters  Int? // Meseros con PIN; null = sin límite
+  maxAccounts Int? // Cuentas del panel; null = sin límite
+  active      Boolean      @default(true) // Inactivo = ya no se ofrece, pero quien lo tiene lo conserva
+  position    Int          @default(0)
+  restaurants Restaurant[]
+  createdAt   DateTime     @default(now())
+}
+
+// Pago de la suscripción registrado por la plataforma (transferencia, efectivo…).
+// Cada pago alarga "paidUntil" del restaurante por los meses pagados.
+model SubscriptionPayment {
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  amount       Float
+  months       Int
+  method       String // TRANSFER, CASH, CARD, OTHER
+  reference    String     @default("") // Número de transferencia, recibo…
+  note         String     @default("")
+  periodFrom   DateTime
+  periodTo     DateTime
+  recordedBy   String // Usuario de la plataforma que lo registró
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
+}
+
+// Una sola fila (id = 1)
+model PlatformSettings {
+  id                  Int      @id @default(1)
+  trialDays           Int      @default(15) // Prueba gratis de los restaurantes nuevos
+  graceDays           Int      @default(5) // Días después del vencimiento antes de bloquear
+  signupEnabled       Boolean  @default(false) // Registro público en /registro
+  signupPlanId        Int? // Plan que reciben los que se registran solos
+  paymentInstructions String   @default("") // Cómo pagar (cuentas de banco…); lo ven los restaurantes
+  supportPhone        String   @default("")
+  supportEmail        String   @default("")
+  updatedAt           DateTime @updatedAt
+}
+
+// Enlace de un solo uso para entrar al panel recién registrado (el registro ocurre en el dominio
+// principal y la sesión vive en el subdominio del restaurante). Vence a los pocos minutos.
+model LoginTicket {
+  id           String     @id // sha256 del token
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  accountId    Int
+  account      Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
 }

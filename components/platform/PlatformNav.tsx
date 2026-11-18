@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, LogOut, UserRoundCog, UsersRound } from "lucide-react";
+import { Building2, LogOut, Settings, UserRoundCog, UsersRound } from "lucide-react";
 import { logoutPlatform } from "@/app/platform-actions";
 import { BrandMark } from "@/components/Brand";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/plataforma", label: "Restaurantes", Icon: Building2 },
+  { href: "/plataforma/ajustes", label: "Ajustes", Icon: Settings },
   { href: "/plataforma/equipo", label: "Equipo", Icon: UsersRound },
   { href: "/plataforma/cuenta", label: "Mi cuenta", Icon: UserRoundCog },
 ];
@@ -35,7 +36,7 @@ export function PlatformNav({ name, locked }: { name: string; locked: boolean })
               )}
             >
               <Icon className={cn("size-4", active(href) && "text-primary")} />
-              <span className="hidden sm:inline">{label}</span>
+              <span className="hidden md:inline">{label}</span>
             </Link>
           ))}
         </nav>

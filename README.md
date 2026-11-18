@@ -34,6 +34,22 @@ Panel del equipo que vende y administra Ristemo. Solo abre en el dominio princip
 - **Restaurantes:** lista con búsqueda, ventas de los últimos 30 días, última venta y alerta de los que dejaron de vender. *Nuevo restaurante* lo crea con la cuenta de su dueño y muestra un mensaje listo para enviar con la dirección, el correo y la contraseña temporal.
 - **Detalle:** nombre, subdominio y notas internas; **suspender / reactivar** (bloquea punto de venta, cocina y panel sin borrar nada); cuentas del restaurante y contraseña temporal nueva para un dueño que olvidó la suya.
 - **Equipo:** quién tiene acceso a la plataforma. **Mi cuenta:** cambiar la contraseña.
+
+## Suscripciones y cobro
+
+- **Planes** (*Plataforma → Ajustes*): nombre, precio mensual y límites opcionales de meseros y de cuentas del panel. Un plan retirado deja de ofrecerse, pero quien lo tiene lo conserva. Al llegar al límite, el restaurante ve un aviso al intentar agregar más.
+- **Vencimiento:** cada restaurante tiene una fecha de *pagado hasta* (último día pagado). Los restaurantes nuevos empiezan con la prueba gratis (días configurables). Sin fecha, no vence nunca, como el restaurante que ya usaba el sistema.
+- **Cobro manual:** en la página del restaurante, *Registrar pago* (monto, meses, forma de pago y referencia) alarga el vencimiento desde el día siguiente al último pagado, o desde hoy si ya había vencido. El vencimiento también se puede ajustar a mano para corregir o regalar días.
+- **Avisos y bloqueo:** 7 días antes de vencer, y durante los días de gracia, el panel del restaurante muestra un aviso con *Cómo pagar*. Pasada la gracia se bloquean el punto de venta, la cocina y el panel, con las instrucciones de pago y el contacto de soporte. Al registrar el pago se desbloquea solo. La suspensión manual sigue siendo aparte.
+- **El restaurante ve** su plan, vencimiento, uso de límites, cómo pagar e historial de pagos en *Ajustes → Suscripción*.
+- La lista de la plataforma muestra el ingreso mensual (planes de los que ya pagan), los restaurantes por cobrar, en prueba y bloqueados.
+
+## Registro público (`/registro`)
+
+- Se activa en *Plataforma → Ajustes → Registro público*. Necesita `ROOT_DOMAIN` y conviene tener el certificado comodín: sin él, la dirección de cada restaurante nuevo no funciona hasta agregarla en Coolify.
+- El restaurante elige su nombre y su dirección (se revisa en vivo si está libre), y crea la cuenta del dueño con su propia contraseña. Empieza con la prueba gratis y el plan configurado para registros, y entra directo a su panel con un enlace de un solo uso que vence a los 10 minutos.
+- Freno contra abuso: máximo 3 registros por hora desde la misma conexión, más un campo trampa para bots.
+- En el panel, **Primeros pasos** guía la configuración (datos del negocio, mesas, menú, personal, facturación opcional y primera venta). Cada paso se marca solo, y la tarjeta desaparece al completar lo necesario.
 - **Primer usuario:** desde la terminal del contenedor, `node scripts/plataforma-usuario.mjs <correo> "<Nombre>"` (también sirve para recuperar el acceso). Imprime una contraseña temporal.
 - Scripts equivalentes, por si no hay acceso al panel: `node scripts/nuevo-restaurante.mjs <slug> "<Nombre>" <correo-del-dueño>` y `node scripts/acceso-dueno.mjs <slug> <correo>` (el restaurante sin subdominio es `principal`).
 

@@ -2,9 +2,11 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { rootPrisma } from "@/lib/prisma-base";
 import { defaultRestaurantId, restaurantStats, restaurantUrl, DAY } from "@/lib/platform";
+import { billingOf, getPlatformSettings } from "@/lib/billing";
 import { formatMoney } from "@/lib/config";
 import { NewRestaurantDialog } from "@/components/platform/NewRestaurantDialog";
 import { RestaurantFilter } from "@/components/platform/RestaurantFilter";
+import { BillingBadge } from "@/components/platform/BillingBadge";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -22,26 +24,40 @@ function activity(last: Date | null, now: number) {
 
 export default async function RestaurantesPage({ searchParams }: { searchParams: Promise<{ q?: string; estado?: string }> }) {
   const { q = "", estado = "" } = await searchParams;
-  const [restaurants, stats, defaultId] = await Promise.all([
-    rootPrisma.restaurant.findMany({ orderBy: { createdAt: "asc" } }),
+  const [restaurants, stats, defaultId, settings, plans, paidCounts] = await Promise.all([
+    rootPrisma.restaurant.findMany({ orderBy: { createdAt: "asc" }, include: { plan: true } }),
     restaurantStats(),
     defaultRestaurantId(),
+    getPlatformSettings(),
+    rootPrisma.plan.findMany({ where: { active: true }, orderBy: { position: "asc" } }),
+    rootPrisma.subscriptionPayment.groupBy({ by: ["restaurantId"], _count: true }),
   ]);
+  const paying = new Set(paidCounts.map((p) => p.restaurantId));
   const now = new Date().getTime();
-  const active = restaurants.filter((r) => r.status === "ACTIVE");
-  const sales30 = restaurants.reduce((s, r) => s + stats.get(r.id).sales30, 0);
-  const idle = active.filter((r) => {
-    const last = stats.get(r.id).lastSale;
-    return !last || now - last.getTime() > 14 * DAY;
-  }).length;
+
+  const rows = restaurants.map((r) => {
+    const billing = billingOf(r.paidUntil, settings.graceDays);
+    const trial = !!r.paidUntil && !paying.has(r.id);
+    const suspended = r.status !== "ACTIVE";
+    return { r, billing, trial, suspended, s: stats.get(r.id) };
+  });
+  const usable = rows.filter((x) => !x.suspended && x.billing.state !== "EXPIRED");
+  // Ingreso mensual: planes de los que ya pagan y siguen activos (no cuenta pruebas ni bloqueados)
+  const mrr = usable.filter((x) => !x.trial && x.r.plan).reduce((s, x) => s + (x.r.plan?.price ?? 0), 0);
+  const toCollect = rows.filter((x) => !x.suspended && (x.billing.state === "DUE_SOON" || x.billing.state === "GRACE"));
+  const blocked = rows.filter((x) => x.suspended || x.billing.state === "EXPIRED");
+  const trials = usable.filter((x) => x.trial).length;
+  const newSignups = rows.filter((x) => x.r.source === "REGISTRO" && now - x.r.createdAt.getTime() < 7 * DAY).length;
 
   const term = q.trim().toLowerCase();
-  const shown = restaurants.filter((r) => {
-    if (estado === "activos" && r.status !== "ACTIVE") return false;
-    if (estado === "suspendidos" && r.status === "ACTIVE") return false;
+  const shown = rows.filter((x) => {
+    if (estado === "activos" && (x.suspended || x.billing.state === "EXPIRED")) return false;
+    if (estado === "por-cobrar" && !toCollect.includes(x)) return false;
+    if (estado === "bloqueados" && !blocked.includes(x)) return false;
+    if (estado === "prueba" && !x.trial) return false;
     if (!term) return true;
-    const owners = stats.get(r.id).owners.map((o) => o.email).join(" ");
-    return `${r.name} ${r.slug} ${owners}`.toLowerCase().includes(term);
+    const owners = x.s.owners.map((o) => o.email).join(" ");
+    return `${x.r.name} ${x.r.slug} ${owners}`.toLowerCase().includes(term);
   });
 
   return (
@@ -49,16 +65,24 @@ export default async function RestaurantesPage({ searchParams }: { searchParams:
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Restaurantes</h1>
-          <p className="text-muted-foreground mt-1">Los clientes que usan Ristemo.</p>
+          <p className="text-muted-foreground mt-1">
+            Los clientes que usan Ristemo.
+            {newSignups > 0 && (
+              <span className="text-primary font-medium">
+                {" "}
+                {newSignups} se registr{newSignups === 1 ? "ó" : "aron"} esta semana.
+              </span>
+            )}
+          </p>
         </div>
-        <NewRestaurantDialog />
+        <NewRestaurantDialog plans={plans.map((p) => ({ id: p.id, name: p.name, price: p.price }))} trialDays={settings.trialDays} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <Kpi label="Restaurantes activos" value={String(active.length)} />
-        <Kpi label="Suspendidos" value={String(restaurants.length - active.length)} />
-        <Kpi label="Ventas de todos (30 días)" value={formatMoney(sales30)} />
-        <Kpi label="Sin ventas en 14 días" value={String(idle)} hint={idle ? "Activos que quizás dejaron de usarlo" : undefined} />
+        <Kpi label="Ingreso mensual" value={formatMoney(mrr)} hint="Planes de los que ya pagan" />
+        <Kpi label="Restaurantes activos" value={String(usable.length)} hint={trials ? `${trials} en prueba gratis` : undefined} />
+        <Kpi label="Por cobrar" value={String(toCollect.length)} hint={`Vencen en 7 días o están en gracia`} tone={toCollect.length ? "warn" : undefined} />
+        <Kpi label="Bloqueados" value={String(blocked.length)} hint="Suspendidos o vencidos" tone={blocked.length ? "bad" : undefined} />
       </div>
 
       <RestaurantFilter q={q} estado={estado} />
@@ -69,8 +93,7 @@ export default async function RestaurantesPage({ searchParams }: { searchParams:
         </p>
       ) : (
         <ul className="rounded-2xl border bg-card divide-y overflow-hidden">
-          {shown.map((r) => {
-            const s = stats.get(r.id);
+          {shown.map(({ r, billing, trial, suspended, s }) => {
             const act = activity(s.lastSale, now);
             const url = r.id === defaultId ? "Dominio principal" : restaurantUrl(r.slug)?.replace(/^https?:\/\//, "") ?? `${r.slug}.(falta ROOT_DOMAIN)`;
             return (
@@ -79,9 +102,8 @@ export default async function RestaurantesPage({ searchParams }: { searchParams:
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium truncate">{r.name || r.slug}</p>
-                      {r.status !== "ACTIVE" && (
-                        <span className="text-[11px] font-semibold rounded-full bg-red-500/15 text-red-300 px-2 py-0.5">Suspendido</span>
-                      )}
+                      <BillingBadge billing={billing} trial={trial} suspended={suspended} />
+                      {r.plan && <span className="text-[11px] text-muted-foreground">{r.plan.name}</span>}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
                       {url} · {s.owners[0]?.email ?? "sin dueño"}
@@ -101,7 +123,7 @@ export default async function RestaurantesPage({ searchParams }: { searchParams:
                   <div className="text-right shrink-0">
                     <p className="font-semibold tabular">{formatMoney(s.sales30)}</p>
                     <p className="text-xs text-muted-foreground">
-                      {s.payments30} cobro{s.payments30 === 1 ? "" : "s"} en 30 días
+                      vendido en 30 días · {s.payments30} cobro{s.payments30 === 1 ? "" : "s"}
                     </p>
                   </div>
                   <ChevronRight className="size-4 text-muted-foreground shrink-0" />
@@ -115,11 +137,11 @@ export default async function RestaurantesPage({ searchParams }: { searchParams:
   );
 }
 
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "warn" | "bad" }) {
   return (
     <div className="rounded-2xl border bg-card p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-xl sm:text-2xl font-semibold tabular mt-1">{value}</p>
+      <p className={cn("text-xl sm:text-2xl font-semibold tabular mt-1", tone === "warn" && "text-amber-200", tone === "bad" && "text-red-300")}>{value}</p>
       {hint && <p className="text-[11px] text-muted-foreground mt-0.5">{hint}</p>}
     </div>
   );

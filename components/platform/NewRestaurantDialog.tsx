@@ -10,8 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { HandoffDialog, ownerHandoff, type HandoffData } from "@/components/platform/Handoff";
+import { formatMoney } from "@/lib/config";
 
-const EMPTY: NewRestaurantInput = { name: "", slug: "", ownerName: "", ownerEmail: "", notes: "" };
+const EMPTY: NewRestaurantInput = { name: "", slug: "", ownerName: "", ownerEmail: "", notes: "", planId: null, trial: true };
+
+export interface PlanOption {
+  id: number;
+  name: string;
+  price: number;
+}
 
 /** Igual que normalizeSlug del servidor, para sugerir el subdominio mientras se escribe el nombre. */
 function suggestSlug(name: string) {
@@ -24,7 +31,7 @@ function suggestSlug(name: string) {
     .slice(0, 40);
 }
 
-export function NewRestaurantDialog() {
+export function NewRestaurantDialog({ plans, trialDays }: { plans: PlanOption[]; trialDays: number }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
@@ -87,6 +94,34 @@ export function NewRestaurantDialog() {
               <Field label="Correo del dueño">
                 <Input required type="email" value={form.ownerEmail} onChange={set("ownerEmail")} className="h-12 rounded-xl" />
               </Field>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Plan">
+                <select
+                  value={form.planId ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, planId: e.target.value ? Number(e.target.value) : null }))}
+                  className="h-12 w-full rounded-xl border bg-transparent px-3 text-sm"
+                >
+                  <option value="">Sin plan</option>
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {formatMoney(p.price)}/mes
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer self-end">
+                <input
+                  type="checkbox"
+                  checked={form.trial}
+                  onChange={(e) => setForm((f) => ({ ...f, trial: e.target.checked }))}
+                  className="mt-0.5 size-4 accent-[var(--primary)]"
+                />
+                <span className="text-sm">
+                  <span className="block font-medium">Prueba gratis de {trialDays} días</span>
+                  <span className="block text-xs text-muted-foreground">Si no, queda sin vencimiento hasta registrar un pago.</span>
+                </span>
+              </label>
             </div>
             <Field label="Notas internas" hint="Solo las ve la plataforma: teléfono, plan, acuerdos…">
               <textarea

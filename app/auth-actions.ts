@@ -17,6 +17,7 @@ import {
   verifyPassword,
 } from "@/lib/password";
 import { LOGIN_LIMIT, blockedMinutes, clearFailures, registerFailure } from "@/lib/rate-limit";
+import { planLimitProblem } from "@/lib/subscription";
 
 type Result = { success: boolean; error?: string };
 
@@ -163,6 +164,8 @@ export async function createAccount(input: { name: string; email: string; role: 
   if (!email) return { success: false, error: "Escribe un correo válido" };
   if (!ROLES.has(input.role)) return { success: false, error: "Rol no válido" };
   if (await prisma.account.findFirst({ where: { email } })) return { success: false, error: "Ya hay una cuenta con ese correo" };
+  const limit = await planLimitProblem("accounts");
+  if (limit) return { success: false, error: limit };
   const password = temporaryPassword();
   await prisma.account.create({
     data: { name, email, role: input.role, passwordHash: await hashPassword(password), mustChangePassword: true },
@@ -189,6 +192,10 @@ export async function updateAccount(id: number, input: { role?: string; active?:
   const target = await prisma.account.findUnique({ where: { id } });
   if (!target) return { success: false, error: "Cuenta no encontrada" };
   if (input.role !== undefined && !ROLES.has(input.role)) return { success: false, error: "Rol no válido" };
+  if (input.active && !target.active) {
+    const limit = await planLimitProblem("accounts");
+    if (limit) return { success: false, error: limit };
+  }
   await prisma.$transaction([
     prisma.account.update({ where: { id }, data: { ...(input.role ? { role: input.role } : {}), ...(input.active !== undefined ? { active: input.active } : {}) } }),
     ...(input.active === false ? [prisma.session.deleteMany({ where: { accountId: id } })] : []),

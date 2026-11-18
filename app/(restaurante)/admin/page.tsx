@@ -7,6 +7,7 @@ import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { formatElapsed, formatMoney } from "@/lib/config";
 import { formatQty, stockLevel } from "@/lib/inventory";
 import { fiscalStatus } from "@/lib/invoicing";
+import { GettingStarted } from "@/components/admin/GettingStarted";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,8 @@ function greeting() {
   return "Buenas noches";
 }
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<{ bienvenida?: string }> }) {
+  const { bienvenida } = await searchParams;
   const [ventas, openOrders, tableCount, ingredients, fiscal] = await Promise.all([
     getDailySales(),
     prisma.order.findMany({
@@ -49,6 +51,8 @@ export default async function AdminDashboard() {
         title={greeting()}
         description={new Date().toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
       />
+
+      <GettingStarted welcome={bienvenida === "1"} />
 
       {/* Indicadores del día */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

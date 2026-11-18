@@ -7,6 +7,7 @@ import type { Account, Restaurant, Session } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { rootPrisma } from "@/lib/prisma-base";
 import { restaurantForHost } from "@/lib/tenant";
+import { getPlatformSettings, isBlocked } from "@/lib/billing";
 
 export const SESSION_COOKIE = "ristemo_session";
 const IDLE_DAYS = 7; // Sin entrar al panel en este tiempo, hay que volver a iniciar sesión
@@ -43,14 +44,14 @@ export async function startSession(account: Pick<Account, "id">) {
 
 type Valid = Session & { account: Account; restaurant: Restaurant };
 
-/** ¿La sesión sigue abierta, es de este restaurante y la cuenta está activa? */
-function isUsable(s: Valid | null, restaurantId: number | undefined): s is Valid {
+/** ¿La sesión sigue abierta, es de este restaurante, la cuenta está activa y el restaurante no está bloqueado? */
+function isUsable(s: Valid | null, restaurantId: number | undefined, graceDays: number): s is Valid {
   return (
     !!s &&
     s.restaurantId === restaurantId &&
     s.expiresAt > new Date() &&
     s.account.active &&
-    s.restaurant.status === "ACTIVE"
+    !isBlocked(s.restaurant, graceDays)
   );
 }
 
@@ -60,11 +61,12 @@ function isUsable(s: Valid | null, restaurantId: number | undefined): s is Valid
  */
 export async function sessionForHost(token: string | undefined, host: string | null) {
   if (!token) return null;
-  const [s, restaurant] = await Promise.all([
+  const [s, restaurant, settings] = await Promise.all([
     rootPrisma.session.findUnique({ where: { id: hashToken(token) }, include: { account: true, restaurant: true } }),
     restaurantForHost(host),
+    getPlatformSettings(),
   ]);
-  return isUsable(s, restaurant?.id) ? s : null;
+  return isUsable(s, restaurant?.id, settings.graceDays) ? s : null;
 }
 
 /** Cuenta con sesión en esta petición (o null). Renueva el vencimiento con el uso. */
@@ -72,7 +74,7 @@ export const getAdmin = cache(async (): Promise<SessionAccount | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const s = await prisma.session.findUnique({ where: { id: hashToken(token) }, include: { account: true, restaurant: true } });
-  if (!isUsable(s, s?.restaurantId)) return null; // el filtro automático ya garantiza que es de este restaurante
+  if (!isUsable(s, s?.restaurantId, (await getPlatformSettings()).graceDays)) return null; // el filtro automático ya garantiza que es de este restaurante
   if (Date.now() - s.lastSeenAt.getTime() > TOUCH_EVERY) {
     await prisma.session.update({
       where: { id: s.id },

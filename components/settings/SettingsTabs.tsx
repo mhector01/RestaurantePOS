@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { KeyRound, Store, UserRoundCog } from "lucide-react";
+import { CreditCard, KeyRound, Store, UserRoundCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/admin/ajustes", label: "Negocio", Icon: Store },
   { href: "/admin/ajustes/cuentas", label: "Acceso al panel", Icon: KeyRound },
+  { href: "/admin/ajustes/suscripcion", label: "Suscripción", Icon: CreditCard },
   { href: "/admin/ajustes/mi-cuenta", label: "Mi cuenta", Icon: UserRoundCog },
 ];
 

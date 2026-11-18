@@ -6,6 +6,7 @@ import type { Restaurant } from "@prisma/client";
 import { rootPrisma } from "@/lib/prisma-base";
 import { tenantSlugFromHost } from "@/lib/tenant-host";
 import { BUSINESS } from "@/lib/config";
+import { billingOf, getPlatformSettings } from "@/lib/billing";
 
 const forced = new AsyncLocalStorage<number>();
 
@@ -43,6 +44,9 @@ export async function currentRestaurantId(): Promise<number> {
   const r = await getRestaurant();
   if (!r) throw new TenantError("Restaurante no encontrado");
   if (r.status !== "ACTIVE") throw new TenantError("Restaurante suspendido");
+  if (r.paidUntil && billingOf(r.paidUntil, (await getPlatformSettings()).graceDays).state === "EXPIRED") {
+    throw new TenantError("Suscripción vencida");
+  }
   return r.id;
 }
 

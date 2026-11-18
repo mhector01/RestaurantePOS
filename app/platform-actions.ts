@@ -16,6 +16,7 @@ import {
   verifyPassword,
 } from "@/lib/password";
 import { LOGIN_LIMIT, blockedMinutes, clearFailures, registerFailure } from "@/lib/rate-limit";
+import { addDays, getPlatformSettings, startOfDay } from "@/lib/billing";
 
 type Result = { success: boolean; error?: string };
 const clean = (v: unknown, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -84,6 +85,8 @@ export interface NewRestaurantInput {
   ownerName: string;
   ownerEmail: string;
   notes: string;
+  planId: number | null;
+  trial: boolean; // con prueba gratis (vence en N días) o sin vencimiento
 }
 
 /** Crea el restaurante con la cuenta de su dueño (contraseña temporal). */
@@ -101,10 +104,17 @@ export async function createRestaurant(
   if (await rootPrisma.restaurant.findUnique({ where: { slug } })) {
     return { success: false, error: `Ya existe un restaurante con el subdominio "${slug}"` };
   }
+  if (input.planId && !(await rootPrisma.plan.findUnique({ where: { id: input.planId } }))) {
+    return { success: false, error: "Ese plan no existe" };
+  }
+  const settings = await getPlatformSettings();
+  const paidUntil = input.trial ? addDays(startOfDay(new Date()), Math.max(0, settings.trialDays - 1)) : null;
   const password = temporaryPassword();
   const passwordHash = await hashPassword(password);
   const restaurant = await rootPrisma.$transaction(async (tx) => {
-    const r = await tx.restaurant.create({ data: { name, slug, notes: clean(input.notes, 2000) } });
+    const r = await tx.restaurant.create({
+      data: { name, slug, notes: clean(input.notes, 2000), planId: input.planId || null, paidUntil },
+    });
     await tx.account.create({
       data: { restaurantId: r.id, name: ownerName, email, passwordHash, role: "OWNER", mustChangePassword: true },
     });
