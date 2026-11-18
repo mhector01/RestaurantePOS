@@ -20,13 +20,18 @@ async function findDefault() {
   return rootPrisma.restaurant.findFirst({ orderBy: { id: "asc" } });
 }
 
+/** Restaurante que corresponde a una dirección (también lo usa el proxy, que no tiene `headers()`). */
+export function restaurantForHost(host: string | null | undefined): Promise<Restaurant | null> {
+  const slug = tenantSlugFromHost(host);
+  // Un subdominio que no existe NO cae al restaurante por defecto: no debe ver datos de nadie.
+  return slug ? rootPrisma.restaurant.findUnique({ where: { slug } }) : findDefault();
+}
+
 /** Restaurante de la dirección con la que se entró (una consulta por petición). */
 export const getRestaurant = cache(async (): Promise<Restaurant | null> => {
   const id = forced.getStore();
   if (id) return rootPrisma.restaurant.findUnique({ where: { id } });
-  const slug = tenantSlugFromHost((await headers()).get("host"));
-  // Un subdominio que no existe NO cae al restaurante por defecto: no debe ver datos de nadie.
-  return slug ? rootPrisma.restaurant.findUnique({ where: { slug } }) : findDefault();
+  return restaurantForHost((await headers()).get("host"));
 });
 
 export class TenantError extends Error {}
@@ -41,14 +46,14 @@ export async function currentRestaurantId(): Promise<number> {
   return r.id;
 }
 
-/** Datos que se imprimen en tickets y encabezados. Si el restaurante no los tiene, se usan los del .env. */
+/**
+ * Datos que se imprimen en tickets y encabezados. Un restaurante que aún no guarda sus datos
+ * (el que ya usaba el sistema antes de ser multi-restaurante) sigue mostrando los del .env.
+ */
 export async function getBusiness() {
   const r = await getRestaurant();
-  return {
-    name: r?.name || BUSINESS.name,
-    address: r?.address || BUSINESS.address,
-    taxId: r?.taxId || BUSINESS.taxId,
-  };
+  if (!r?.name) return { name: BUSINESS.name, address: BUSINESS.address, taxId: BUSINESS.taxId, phone: r?.phone ?? "" };
+  return { name: r.name, address: r.address, taxId: r.taxId, phone: r.phone };
 }
 
 export type BusinessInfo = Awaited<ReturnType<typeof getBusiness>>;

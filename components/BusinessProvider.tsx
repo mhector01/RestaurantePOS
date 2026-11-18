@@ -7,9 +7,10 @@ export interface Business {
   name: string;
   address: string;
   taxId: string;
+  phone: string;
 }
 
-const BusinessContext = createContext<Business>({ name: BUSINESS.name, address: BUSINESS.address, taxId: BUSINESS.taxId });
+const BusinessContext = createContext<Business>({ name: BUSINESS.name, address: BUSINESS.address, taxId: BUSINESS.taxId, phone: "" });
 
 /** Datos del restaurante actual para los componentes del navegador (ticket, encabezados). */
 export function BusinessProvider({ value, children }: { value: Business; children: React.ReactNode }) {

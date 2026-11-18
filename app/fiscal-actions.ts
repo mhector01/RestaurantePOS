@@ -3,19 +3,11 @@
 import prisma from "@/lib/prisma";
 import { currentRestaurantId } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
-import { cookies, headers } from "next/headers";
-import { ADMIN_COOKIE, isValidAdminToken } from "@/lib/auth";
+import { requireAdmin } from "@/lib/session";
 import { normalizeCai, normalizeRtn, normalizeTaxRate, parseInvoiceNumber, type InvoiceLine } from "@/lib/fiscal";
 import { issueInvoice, toInvoiceView } from "@/lib/invoicing";
 
 type Result = { success: boolean; error?: string };
-
-async function requireAdmin() {
-  const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
-    throw new Error("No autorizado");
-  }
-}
 
 function refresh() {
   revalidatePath("/admin", "layout");

@@ -2,15 +2,7 @@
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { cookies, headers } from "next/headers";
-import { ADMIN_COOKIE, isValidAdminToken } from "@/lib/auth";
-
-async function requireAdmin() {
-  const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
-    throw new Error("No autorizado");
-  }
-}
+import { requireAdmin } from "@/lib/session";
 
 export interface ComboInput {
   name: string;

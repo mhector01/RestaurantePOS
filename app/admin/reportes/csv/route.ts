@@ -1,6 +1,5 @@
-import { cookies, headers } from "next/headers";
 import prisma from "@/lib/prisma";
-import { ADMIN_COOKIE, isValidAdminToken } from "@/lib/auth";
+import { getAdmin } from "@/lib/session";
 import { getBusiness } from "@/lib/tenant";
 import { isoDay, resolvePeriod } from "@/lib/period";
 import { productSales, profitSummary, salesSummary, taxSummary } from "@/lib/reports";
@@ -18,10 +17,7 @@ const date = (d: Date) => d.toLocaleDateString("es-HN", { day: "2-digit", month:
 
 /** Descargas de los reportes en CSV (abre directo en Excel, con acentos). */
 export async function GET(request: Request) {
-  const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
-    return new Response("No autorizado", { status: 401 });
-  }
+  if (!(await getAdmin())) return new Response("No autorizado", { status: 401 });
   const url = new URL(request.url);
   const tipo = url.searchParams.get("tipo") ?? "ventas";
   const sp = Object.fromEntries(url.searchParams) as { p?: string; desde?: string; hasta?: string };

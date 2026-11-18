@@ -1,6 +1,5 @@
-import { cookies, headers } from "next/headers";
 import prisma from "@/lib/prisma";
-import { ADMIN_COOKIE, isValidAdminToken } from "@/lib/auth";
+import { getAdmin } from "@/lib/session";
 import { monthRange } from "@/lib/month";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +12,7 @@ const n = (v: number) => v.toFixed(2);
 
 /** Libro de ventas del mes en CSV (se abre en Excel). Incluye las anuladas marcadas como tal. */
 export async function GET(request: Request) {
-  const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
-    return new Response("No autorizado", { status: 401 });
-  }
+  if (!(await getAdmin())) return new Response("No autorizado", { status: 401 });
   const url = new URL(request.url);
   const range = monthRange(url.searchParams.get("mes") ?? undefined);
   const invoices = await prisma.invoice.findMany({

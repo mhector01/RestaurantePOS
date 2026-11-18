@@ -3,6 +3,7 @@
 import { createPortal } from "react-dom";
 import { PAYMENT_LABEL, formatMoney } from "@/lib/config";
 import { useBusiness } from "@/components/BusinessProvider";
+import { formatRtn } from "@/lib/fiscal";
 import { InvoiceBody } from "@/components/InvoicePrint";
 import type { InvoiceView } from "@/lib/fiscal";
 
@@ -53,7 +54,8 @@ export function TicketPrint({
       <div className="text-center pb-2 mb-2 border-b border-dashed border-black">
         <p className="text-sm font-bold uppercase">{business.name}</p>
         <p>{business.address}</p>
-        {business.taxId && <p>RTN/NIT: {business.taxId}</p>}
+        {business.phone && <p>Tel. {business.phone}</p>}
+        {business.taxId && <p>RTN: {/^\d{14}$/.test(business.taxId) ? formatRtn(business.taxId) : business.taxId}</p>}
       </div>
 
       <div className="mb-2 space-y-0.5">

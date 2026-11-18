@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import prisma from "@/lib/prisma";
+import { WAITER_COOKIE, verifiedWaiterId } from "@/lib/waiter-session";
 import { PinPad } from "@/components/PinPad";
 import { OrderScreen } from "@/components/pos/OrderScreen";
 
@@ -12,7 +13,7 @@ export default async function LlevarPedidoPage({ params }: { params: Promise<{ i
   if (Number.isNaN(orderId)) notFound();
 
   const cookieStore = await cookies();
-  const waiterId = cookieStore.get("waiter_id")?.value;
+  const waiterId = verifiedWaiterId(cookieStore.get(WAITER_COOKIE)?.value);
   const mesero = waiterId ? await prisma.user.findUnique({ where: { id: parseInt(waiterId) } }) : null;
   if (!mesero) return <PinPad />;
 

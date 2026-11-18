@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { ChefHat, Settings } from "lucide-react";
 import { BrandHeader } from "@/components/Brand";
 import prisma from "@/lib/prisma";
+import { WAITER_COOKIE, verifiedWaiterId } from "@/lib/waiter-session";
 import { normalizeShape } from "@/lib/floor";
 import { getBusiness } from "@/lib/tenant";
 import { FloorPlan, type FloorTable } from "@/components/pos/FloorPlan";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const cookieStore = await cookies();
-  const waiterId = cookieStore.get("waiter_id")?.value;
+  const waiterId = verifiedWaiterId(cookieStore.get(WAITER_COOKIE)?.value);
   const waiter = waiterId
     ? await prisma.user.findUnique({ where: { id: parseInt(waiterId) } })
     : null;

@@ -2,18 +2,10 @@
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { cookies, headers } from "next/headers";
-import { ADMIN_COOKIE, isValidAdminToken } from "@/lib/auth";
+import { requireAdmin } from "@/lib/session";
 import { UNITS } from "@/lib/inventory";
 
 type Result = { success: boolean; error?: string };
-
-async function requireAdmin() {
-  const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
-    throw new Error("No autorizado");
-  }
-}
 
 function refreshInventory() {
   revalidatePath("/admin", "layout"); // incluye la alerta del menú lateral

@@ -3,9 +3,10 @@
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { normalizeShape } from "@/lib/floor";
-import { ADMIN_COOKIE, adminToken, getAdminPassword, isValidAdminToken } from "@/lib/auth";
+import { requireAdmin } from "@/lib/session";
+import { WAITER_COOKIE, signWaiterId, verifiedWaiterId } from "@/lib/waiter-session";
+import { PIN_LIMIT, blockedMinutes, clearFailures, registerFailure } from "@/lib/rate-limit";
 import { consumeForSale } from "@/lib/stock";
 import { expandSoldLines, loadCombo, partsLabel, resolveCombo, type ComboSelection } from "@/lib/combos";
 import { buildInvoiceLines, issueInvoice, type SoldItem } from "@/lib/invoicing";
@@ -20,12 +21,6 @@ async function isHttps() {
   return proto === "https";
 }
 
-async function requireAdmin() {
-  const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
-    throw new Error("No autorizado");
-  }
-}
 
 function refreshTable(mesaId: number) {
   revalidatePath(`/mesa/${mesaId}`);
@@ -160,7 +155,7 @@ export async function addProductToOrder(
   selection?: ComboSelection
 ) {
   const cookieStore = await cookies();
-  const waiterId = cookieStore.get("waiter_id")?.value;
+  const waiterId = verifiedWaiterId(cookieStore.get(WAITER_COOKIE)?.value);
 
   const product = await loadCombo(productId);
   if (!product) return { error: "Producto no encontrado" };
@@ -299,7 +294,7 @@ export async function setOrderName(tableId: number, orderId: number | null, name
       id = existing.id;
     } else if (clean) {
       const cookieStore = await cookies();
-      const waiterId = cookieStore.get("waiter_id")?.value;
+      const waiterId = verifiedWaiterId(cookieStore.get(WAITER_COOKIE)?.value);
       const created = await prisma.order.create({
         data: { tableId, name: clean, userId: waiterId ? parseInt(waiterId) : null },
       });
@@ -322,7 +317,7 @@ export async function createTakeoutOrder(name: string, phone?: string | null) {
   const clean = cleanName(name);
   if (clean.length < 2) return { success: false, error: "Escribe el nombre del cliente." };
   const cookieStore = await cookies();
-  const waiterId = cookieStore.get("waiter_id")?.value;
+  const waiterId = verifiedWaiterId(cookieStore.get(WAITER_COOKIE)?.value);
   const counter = await counterTable();
   const order = await prisma.order.create({
     data: { tableId: counter.id, name: clean, phone: cleanPhone(phone), userId: waiterId ? parseInt(waiterId) : null },
@@ -767,33 +762,6 @@ export async function enableCounter() {
 // ACCESO ADMINISTRADOR
 // ---------------------------------------------------------------------------
 
-export async function loginAdmin(formData: FormData) {
-  const password = formData.get("password");
-  const expected = getAdminPassword();
-  if (!expected) {
-    return { error: "Falta configurar ADMIN_PASSWORD en el servidor." };
-  }
-
-  if (password === expected) {
-    const cookieStore = await cookies();
-    cookieStore.set(ADMIN_COOKIE, (await adminToken((await headers()).get("host")))!, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: await isHttps(),
-      maxAge: 60 * 60 * 8,
-    });
-    redirect("/admin");
-  }
-
-  return { error: "Contraseña incorrecta" };
-}
-
-export async function logoutAdmin() {
-  const cookieStore = await cookies();
-  cookieStore.delete(ADMIN_COOKIE);
-  redirect("/");
-}
-
 // ---------------------------------------------------------------------------
 // PERSONAL (MESEROS)
 // ---------------------------------------------------------------------------
@@ -830,11 +798,19 @@ export async function deleteUser(id: number) {
 
 // --- LOGIN DE MESEROS (PIN PAD) ---
 export async function loginWaiter(pin: string) {
-  const user = await prisma.user.findFirst({ where: { pin } });
-  if (!user) return { error: "PIN incorrecto" };
+  const h = await headers();
+  const key = `pin:${h.get("host")}:${h.get("x-forwarded-for")?.split(",")[0]?.trim() || "local"}`;
+  const wait = blockedMinutes(key);
+  if (wait) return { error: `Demasiados intentos. Espera ${wait} min.` };
+  const user = /^d{4}$/.test(pin) ? await prisma.user.findFirst({ where: { pin } }) : null;
+  if (!user) {
+    registerFailure(key, PIN_LIMIT);
+    return { error: "PIN incorrecto" };
+  }
+  clearFailures(key);
 
   const cookieStore = await cookies();
-  cookieStore.set("waiter_id", user.id.toString(), {
+  cookieStore.set(WAITER_COOKIE, signWaiterId(user.id), {
     httpOnly: true,
     secure: await isHttps(),
     maxAge: 60 * 60 * 12,
@@ -846,7 +822,7 @@ export async function loginWaiter(pin: string) {
 
 export async function logoutWaiter() {
   const cookieStore = await cookies();
-  cookieStore.delete("waiter_id");
+  cookieStore.delete(WAITER_COOKIE);
   revalidatePath("/");
 }
 

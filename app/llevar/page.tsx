@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ArrowLeft, BellRing, ChefHat, ChevronRight, Clock, Phone, ShoppingBag } from "lucide-react";
 import prisma from "@/lib/prisma";
+import { WAITER_COOKIE, verifiedWaiterId } from "@/lib/waiter-session";
 import { formatElapsed, formatMoney } from "@/lib/config";
 import { PinPad } from "@/components/PinPad";
 import { WaiterChip } from "@/components/pos/WaiterChip";
@@ -33,7 +34,7 @@ interface Takeout {
 
 export default async function LlevarPage() {
   const cookieStore = await cookies();
-  const waiterId = cookieStore.get("waiter_id")?.value;
+  const waiterId = verifiedWaiterId(cookieStore.get(WAITER_COOKIE)?.value);
   const waiter = waiterId ? await prisma.user.findUnique({ where: { id: parseInt(waiterId) } }) : null;
   if (!waiter) return <PinPad />;
 

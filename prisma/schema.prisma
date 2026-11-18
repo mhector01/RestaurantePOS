@@ -16,6 +16,7 @@ model Restaurant {
   name      String   @default("") // Vacío = se usa NEXT_PUBLIC_BUSINESS_NAME
   address   String   @default("")
   taxId     String   @default("") // RTN que se imprime en el ticket
+  phone     String   @default("") // Teléfono que se imprime en el ticket
   status    String   @default("ACTIVE") // ACTIVE o SUSPENDED
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -42,6 +43,8 @@ model Restaurant {
   invoiceRanges  InvoiceRange[]
   invoices       Invoice[]
   saleLines      SaleLine[]
+  accounts       Account[]
+  sessions       Session[]
 }
 
 // Nuestras tablas
@@ -466,4 +469,43 @@ model SaleLine {
 
   @@index([restaurantId, createdAt])
   @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// ACCESO AL PANEL: cuentas del dueño y administradores de cada restaurante
+// (los meseros entran con PIN, ver User)
+// ---------------------------------------------------------------------------
+
+model Account {
+  id                 Int        @id @default(autoincrement())
+  restaurantId       Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant         Restaurant @relation(fields: [restaurantId], references: [id])
+  name               String
+  email              String // En minúsculas
+  passwordHash       String // scrypt, ver lib/password.ts
+  role               String     @default("ADMIN") // OWNER (dueño: maneja cuentas y datos del negocio) o ADMIN
+  active             Boolean    @default(true)
+  mustChangePassword Boolean    @default(false) // Clave temporal: al entrar debe poner una propia
+  lastLoginAt        DateTime?
+  sessions           Session[]
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@unique([restaurantId, email])
+}
+
+// Sesión abierta en un navegador. La cookie guarda un token al azar; aquí solo su hash.
+model Session {
+  id           String     @id // sha256 del token de la cookie
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  accountId    Int
+  account      Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userAgent    String     @default("")
+  expiresAt    DateTime // Se renueva con el uso; vence tras días sin entrar
+  lastSeenAt   DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+
+  @@index([accountId])
+  @@index([restaurantId])
 }

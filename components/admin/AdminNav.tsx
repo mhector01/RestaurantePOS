@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Armchair, BarChart3, ChefHat, FileText, LayoutDashboard, LogOut, Package, Store, UsersRound, UtensilsCrossed } from "lucide-react";
-import { logoutAdmin } from "@/app/actions";
+import { Armchair, BarChart3, ChefHat, FileText, LayoutDashboard, LogOut, Package, Settings, Store, UsersRound, UtensilsCrossed } from "lucide-react";
+import { logoutAdmin } from "@/app/auth-actions";
 import { cn } from "@/lib/utils";
 import { BrandLogo, BrandMark } from "@/components/Brand";
 
@@ -39,12 +39,19 @@ function AlertBadge({ count, className }: { count: number; className?: string })
   );
 }
 
+export interface NavAccount {
+  name: string;
+  role: string;
+}
+
 export function AdminSidebar({
   business,
+  account,
   stockAlerts = 0,
   fiscalAlerts = 0,
 }: {
   business: string;
+  account: NavAccount;
   stockAlerts?: number;
   fiscalAlerts?: number;
 }) {
@@ -91,6 +98,24 @@ export function AdminSidebar({
         >
           <ChefHat className="size-5" /> Pantalla de cocina
         </Link>
+        <Link
+          href="/admin/ajustes"
+          className={cn(
+            "flex items-center gap-3 h-11 px-3 rounded-xl text-sm font-medium",
+            isActive("/admin/ajustes") ? "bg-sidebar-accent text-white" : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-white"
+          )}
+        >
+          <Settings className={cn("size-5", isActive("/admin/ajustes") && "text-primary")} /> Ajustes
+        </Link>
+        <div className="flex items-center gap-3 px-3 pt-3 mt-2 border-t border-sidebar-border">
+          <span className="size-8 rounded-full bg-sidebar-accent grid place-items-center text-xs font-semibold text-white shrink-0">
+            {account.name.trim().charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-white truncate">{account.name}</p>
+            <p className="text-xs text-sidebar-foreground/60">{account.role === "OWNER" ? "Dueño" : "Administrador"}</p>
+          </div>
+        </div>
         <form action={logoutAdmin}>
           <button
             type="submit"
@@ -111,6 +136,7 @@ export function AdminMobileNav({
   fiscalAlerts = 0,
 }: {
   business: string;
+  account: NavAccount;
   stockAlerts?: number;
   fiscalAlerts?: number;
 }) {
@@ -122,6 +148,9 @@ export function AdminMobileNav({
         <p className="font-semibold flex-1 truncate">{business}</p>
         <Link href="/" aria-label="Ir al punto de venta" className="size-10 grid place-items-center rounded-full hover:bg-white/10">
           <Store className="size-5" />
+        </Link>
+        <Link href="/admin/ajustes" aria-label="Ajustes" className="size-10 grid place-items-center rounded-full hover:bg-white/10">
+          <Settings className="size-5" />
         </Link>
         <form action={logoutAdmin}>
           <button type="submit" aria-label="Cerrar sesión" className="size-10 grid place-items-center rounded-full hover:bg-white/10">

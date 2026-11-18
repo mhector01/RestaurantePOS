@@ -13,7 +13,8 @@ Punto de venta para restaurantes: mesas, comandas, pantalla de cocina, cobro (to
 - `/admin/inventario`: inventario. Insumos con stock mínimo e ideal, proveedores, compras (pagadas o a crédito, con costo promedio), recetas por plato con su costo de alimento, mermas, conteo físico y kardex. Al cobrar se descuenta del stock lo que lleva cada plato según su receta; lo que llega al mínimo aparece en la lista de compras sugerida (agrupada por proveedor) y con alerta en el menú del panel. Los productos sin receta no se controlan.
 - `/admin/facturacion`: facturación de Honduras (Régimen de Facturación SAR). Datos del obligado tributario, rangos CAI con fecha límite (el correlativo se asigna sin repetirse y pasa solo al siguiente rango), ISV 15%, 18% o exento por producto (los precios incluyen ISV y la factura lo desglosa; los combos reparten su precio entre componentes), factura POS de 80 mm con los campos obligatorios, RTN del cliente opcional al cobrar, anulación y reemisión, alertas de rango por agotarse o vencer y libro de ventas mensual en CSV.
 - `/admin/reportes`: reportes con filtro de periodo (hoy, ayer, 7/30 días, mes, mes anterior, año o rango) y comparación contra el periodo anterior. *Ventas* (por día, horas pico, día de la semana, formas de pago, canal y mesero), *Productos* (ranking con costo y margen, categorías, menos vendidos e ingeniería de menú), *Ganancias* (estado de resultados: ventas netas, costo de lo vendido, mermas y faltantes), *Impuestos SAR* (débito fiscal de facturas, crédito fiscal del ISV de compras, ISV a pagar, libro de ventas y libro de compras) y *Cierre de caja*. Todo se descarga en CSV para Excel o se imprime / guarda en PDF.
-- `/admin`: panel del dueño (contraseña `ADMIN_PASSWORD`).
+- `/admin`: panel de administración. Cada persona entra con su correo y contraseña (ver *Acceso al panel*).
+- `/admin/ajustes`: datos del negocio (nombre, dirección, teléfono y RTN del ticket), cuentas con acceso al panel y *Mi cuenta* (cambiar contraseña, cerrar sesiones en otros aparatos).
 
 Stack: Next.js 16 · React 19 · Prisma 7 · PostgreSQL · Tailwind v4.
 
@@ -24,8 +25,16 @@ Una sola instalación atiende a varios restaurantes. Cada uno entra por su subdo
 - El aislamiento es automático: el cliente de Prisma (`lib/prisma.ts`) filtra y firma cada consulta con el restaurante de la petición (`lib/tenant.ts`). Para tareas de la plataforma existe `rootPrisma` (`lib/prisma-base.ts`), sin filtro.
 - Segunda barrera en PostgreSQL: los triggers `tenant_guard` impiden que una fila apunte a otra de un restaurante distinto, y un INSERT sin restaurante falla.
 - Una dirección sin subdominio (o con `www`) abre el restaurante por defecto; un subdominio que no existe muestra "Restaurante no encontrado". Un restaurante con `status = SUSPENDED` queda bloqueado.
-- La sesión del panel vale solo para el restaurante donde se abrió. Por ahora todos usan la misma `ADMIN_PASSWORD`; las cuentas por restaurante vienen en la siguiente fase.
-- Crear un restaurante: `node scripts/nuevo-restaurante.mjs <slug> "<Nombre>"` (en Coolify, desde la terminal del contenedor). Para probar en tu compu entra a `http://<slug>.localhost:3000`.
+- Crear un restaurante con su dueño: `node scripts/nuevo-restaurante.mjs <slug> "<Nombre>" <correo-del-dueño>`. Imprime una contraseña temporal; el dueño pone la suya al entrar. En Coolify se corre desde la terminal del contenedor. Para probar en tu compu entra a `http://<slug>.localhost:3000`.
+- Dueño que olvidó su contraseña: `node scripts/acceso-dueno.mjs <slug> <correo>` le asigna una temporal nueva (o crea otro dueño). El restaurante sin subdominio es `principal`.
+
+## Acceso al panel
+
+- Cada restaurante tiene sus cuentas: **Dueño** (todo, más datos del negocio y quién tiene acceso) y **Administrador** (todo el panel). Se manejan en *Ajustes → Acceso al panel*: dar acceso, contraseña temporal nueva, cambiar rol, desactivar o eliminar.
+- Las cuentas nuevas reciben una contraseña temporal y deben poner una propia al primer ingreso.
+- Contraseñas guardadas con scrypt. Las sesiones viven en la base de datos (la cookie solo tiene un token al azar), vencen tras 7 días sin uso, valen solo en su restaurante y se cierran al cambiar la contraseña o desactivar la cuenta.
+- Tras varios intentos fallidos se bloquea un rato el correo (y la IP), igual que el PIN de los meseros. La cookie del mesero va firmada.
+- **Primer acceso:** un restaurante sin cuentas (como el local que ya usaba el sistema) muestra en `/login` el formulario para crear la cuenta del dueño, protegido con la clave de instalación `ADMIN_PASSWORD`.
 
 ## Desarrollo local
 
@@ -36,15 +45,15 @@ npx prisma migrate deploy
 npm run dev
 ```
 
-Abre http://localhost:3000. En desarrollo, si no defines `ADMIN_PASSWORD`, la contraseña del panel es `12345`.
+Abre http://localhost:3000. En desarrollo, si no defines `ADMIN_PASSWORD`, la clave de instalación (para crear la primera cuenta del dueño) es `12345`.
 
 ## Variables de entorno
 
 | Variable | Obligatoria | Descripción |
 | --- | --- | --- |
 | `DATABASE_URL` | Sí | Conexión a PostgreSQL. |
-| `ADMIN_PASSWORD` | Sí (producción) | Contraseña del panel `/admin`. Sin ella no se puede entrar al panel en producción. |
-| `SESSION_SECRET` | Recomendada | Cadena larga y aleatoria para firmar la sesión de admin. |
+| `ADMIN_PASSWORD` | Sí (producción) | Clave de instalación: se pide solo para crear la cuenta del dueño en un restaurante que aún no tiene cuentas. Ya no sirve para entrar al panel. |
+| `SESSION_SECRET` | Recomendada | Cadena larga y aleatoria para firmar la cookie de los meseros. |
 | `ROOT_DOMAIN` | Para varios restaurantes | Dominio base de los subdominios, p. ej. `ristemo.com` → `<slug>.ristemo.com`. |
 | `DEFAULT_RESTAURANT` | No | Slug del restaurante que abre la dirección sin subdominio. Por defecto, el primero (`principal`). |
 | `TZ` | No | Zona horaria para "ventas de hoy" y horas del ticket. Por defecto `America/Tegucigalpa`. |
