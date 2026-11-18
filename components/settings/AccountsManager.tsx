@@ -50,7 +50,7 @@ export function AccountsManager({ accounts, meId }: { accounts: Row[]; meId: num
         <NewAccountDialog onCreated={setHandoff} />
       </div>
 
-      <ul className="rounded-2xl border bg-card divide-y overflow-hidden">
+      <ul className="rounded-2xl border bg-card divide-y">
         {accounts.map((a) => (
           <AccountRow key={a.id} account={a} isMe={a.id === meId} onReset={setHandoff} />
         ))}
@@ -64,6 +64,7 @@ export function AccountsManager({ accounts, meId }: { accounts: Row[]; meId: num
 function AccountRow({ account: a, isMe, onReset }: { account: Row; isMe: boolean; onReset: (h: Handoff) => void }) {
   const [pending, start] = useTransition();
   const [menu, setMenu] = useState(false);
+  const [up, setUp] = useState(false); // abrir hacia arriba si no cabe debajo
 
   const run = (fn: () => Promise<{ success: boolean; error?: string }>, ok: string) =>
     start(async () => {
@@ -117,7 +118,11 @@ function AccountRow({ account: a, isMe, onReset }: { account: Row; isMe: boolean
             className="size-10 rounded-xl"
             aria-label={`Opciones de ${a.name}`}
             aria-expanded={menu}
-            onClick={() => setMenu((v) => !v)}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setUp(window.innerHeight - r.bottom < 220 && r.top > 220);
+              setMenu((v) => !v);
+            }}
             disabled={pending}
           >
             {pending ? <Loader2 className="animate-spin" /> : <MoreVertical className="size-4" />}
@@ -125,7 +130,7 @@ function AccountRow({ account: a, isMe, onReset }: { account: Row; isMe: boolean
           {menu && (
             <>
               <button type="button" aria-label="Cerrar menú" className="fixed inset-0 z-10 cursor-default" onClick={() => setMenu(false)} />
-              <div className="absolute right-0 top-11 z-20 w-60 rounded-xl border bg-popover p-1 shadow-xl text-sm">
+              <div className={cn("absolute right-0 z-20 w-60", up ? "bottom-11" : "top-11", " rounded-xl border bg-popover p-1 shadow-xl text-sm")}>
                 <MenuItem
                   onClick={() =>
                     start(async () => {

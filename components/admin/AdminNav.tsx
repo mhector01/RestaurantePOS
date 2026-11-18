@@ -57,15 +57,15 @@ export function AdminSidebar({
 }) {
   const isActive = useActive();
   return (
-    <aside className="hidden md:flex w-60 lg:w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground h-dvh sticky top-0">
-      <div className="px-5 pt-5 pb-4 border-b border-sidebar-border">
+    <aside className="hidden md:flex w-60 lg:w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground h-dvh sticky top-0 overflow-y-auto overscroll-contain [scrollbar-width:thin] [scrollbar-color:var(--sidebar-border)_transparent]">
+      <div className="shrink-0 px-5 pt-5 pb-4 border-b border-sidebar-border">
         <BrandLogo className="h-11" priority />
         <p className="mt-3 text-xs text-sidebar-foreground/60 truncate">
           Administración · <span className="text-sidebar-foreground font-medium">{business}</span>
         </p>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 shrink-0 p-3 space-y-1">
         {NAV.map(({ href, label, Icon }) => (
           <Link
             key={href}
@@ -85,7 +85,7 @@ export function AdminSidebar({
         ))}
       </nav>
 
-      <div className="p-3 space-y-1 border-t border-sidebar-border">
+      <div className="shrink-0 p-3 space-y-1 border-t border-sidebar-border">
         <Link
           href="/"
           className="flex items-center gap-3 h-11 px-3 rounded-xl text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-white"
