@@ -5,7 +5,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { rootPrisma } from "@/lib/prisma-base";
 import { endPlatformSession, requirePlatform, startPlatformSession } from "@/lib/platform-session";
-import { restaurantUrl } from "@/lib/platform";
+import { defaultRestaurantId, restaurantUrl } from "@/lib/platform";
+import { randomBytes } from "node:crypto";
+import { hashToken } from "@/lib/session";
 import { isPlatformHost, normalizeSlug } from "@/lib/tenant-host";
 import {
   burnPasswordCheck,
@@ -220,4 +222,42 @@ export async function setPlatformUserActive(id: number, active: boolean): Promis
   ]);
   revalidatePath("/plataforma/equipo");
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// ENTRAR COMO SOPORTE
+// ---------------------------------------------------------------------------
+
+/**
+ * Abre el panel de un restaurante como soporte: queda registrado (quién, cuándo y por qué, y el
+ * dueño lo ve) y devuelve un enlace de un solo uso que vence en 2 minutos. La sesión dura 2 horas.
+ */
+export async function enterAsSupport(id: number, reason: string): Promise<{ error?: string; url?: string }> {
+  const me = await requirePlatform();
+  const why = clean(reason, 200);
+  if (why.length < 3) return { error: "Escribe el motivo (por ejemplo: «configurar el menú», «revisar facturas»)" };
+  const r = await rootPrisma.restaurant.findUnique({ where: { id } });
+  if (!r) return { error: "Restaurante no encontrado" };
+  if (r.status !== "ACTIVE") return { error: "El restaurante está suspendido: reactívalo para entrar" };
+
+  // El restaurante por defecto abre en esta misma dirección (sin subdominio)
+  const isDefault = (await defaultRestaurantId()) === id;
+  let base: string | null;
+  if (isDefault) {
+    const h = await headers();
+    base = `${h.get("x-forwarded-proto")?.split(",")[0]?.trim() || "http"}://${h.get("host")}`;
+  } else {
+    base = restaurantUrl(r.slug);
+  }
+  if (!base) return { error: "Falta configurar ROOT_DOMAIN para saber la dirección del restaurante" };
+
+  const token = randomBytes(32).toString("base64url");
+  await rootPrisma.$transaction([
+    rootPrisma.supportAccess.create({ data: { restaurantId: id, userName: me.name, userEmail: me.email, reason: why } }),
+    rootPrisma.loginTicket.create({
+      data: { id: hashToken(token), restaurantId: id, supportName: me.name, expiresAt: new Date(Date.now() + 2 * 60_000) },
+    }),
+  ]);
+  refresh(id);
+  return { url: `${base}/entrar?t=${token}` };
 }

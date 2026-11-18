@@ -54,6 +54,7 @@ model Restaurant {
   sessions             Session[]
   subscriptionPayments SubscriptionPayment[]
   loginTickets         LoginTicket[]
+  supportAccesses      SupportAccess[]
 }
 
 // Nuestras tablas
@@ -509,10 +510,11 @@ model Session {
   id           String     @id // sha256 del token de la cookie
   restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
-  accountId    Int
-  account      Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId    Int? // null = sesión de soporte de la plataforma
+  account      Account?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  supportName  String? // Quién de la plataforma entró como soporte
   userAgent    String     @default("")
-  expiresAt    DateTime // Se renueva con el uso; vence tras días sin entrar
+  expiresAt    DateTime // Se renueva con el uso; vence tras días sin entrar (soporte: 2 horas fijas)
   lastSeenAt   DateTime   @default(now())
   createdAt    DateTime   @default(now())
 
@@ -605,10 +607,25 @@ model LoginTicket {
   id           String     @id // sha256 del token
   restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
-  accountId    Int
-  account      Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId    Int? // null = entrada de soporte
+  account      Account?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  supportName  String?
   expiresAt    DateTime
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId])
+}
+
+// Cada vez que alguien de la plataforma entra al panel de un restaurante como soporte.
+// El dueño lo ve en Ajustes → Acceso al panel.
+model SupportAccess {
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  userName     String
+  userEmail    String
+  reason       String     @default("")
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
 }

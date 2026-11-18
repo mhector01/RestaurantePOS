@@ -6,6 +6,14 @@ export const dynamic = "force-dynamic";
 
 export default async function MiCuentaPage() {
   const me = await requireAdmin(undefined, { allowTemporary: true });
+  if (me.support) {
+    return (
+      <p className="max-w-3xl rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
+        Estás en una sesión de soporte: no hay una cuenta propia que configurar aquí. Las cuentas del restaurante se manejan en
+        Acceso al panel.
+      </p>
+    );
+  }
   const sessions = await prisma.session.findMany({
     where: { accountId: me.id, expiresAt: { gt: new Date() } },
     orderBy: { lastSeenAt: "desc" },

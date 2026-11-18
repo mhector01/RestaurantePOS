@@ -33,6 +33,7 @@ Panel del equipo que vende y administra Ristemo. Solo abre en el dominio princip
 
 - **Restaurantes:** lista con búsqueda, ventas de los últimos 30 días, última venta y alerta de los que dejaron de vender. *Nuevo restaurante* lo crea con la cuenta de su dueño y muestra un mensaje listo para enviar con la dirección, el correo y la contraseña temporal.
 - **Detalle:** nombre, subdominio y notas internas; **suspender / reactivar** (bloquea punto de venta, cocina y panel sin borrar nada); cuentas del restaurante y contraseña temporal nueva para un dueño que olvidó la suya.
+- **Entrar como soporte:** desde la página del restaurante, con un motivo obligatorio, se abre su panel en otra pestaña con permisos de dueño, sin pedirle su contraseña. La sesión dura 2 horas y no se renueva, y el enlace de entrada sirve una sola vez y vence en 2 minutos. Mientras dura, el panel muestra un aviso de *Modo soporte* con un botón para salir y volver a la plataforma. El dueño ve cada acceso (quién, cuándo y por qué) en *Ajustes → Acceso al panel* y puede cerrar el acceso abierto.
 - **Equipo:** quién tiene acceso a la plataforma. **Mi cuenta:** cambiar la contraseña.
 
 ## Suscripciones y cobro

@@ -108,8 +108,11 @@ export async function logoutAdmin() {
 // MI CUENTA
 // ---------------------------------------------------------------------------
 
+const SUPPORT_ONLY = { success: false, error: "No disponible en una sesión de soporte" };
+
 export async function updateProfile(input: { name: string; email: string }): Promise<Result> {
   const me = await requireAdmin();
+  if (me.support) return SUPPORT_ONLY;
   const name = clean(input.name);
   const email = normalizeEmail(input.email);
   if (name.length < 2) return { success: false, error: "Escribe tu nombre" };
@@ -123,6 +126,7 @@ export async function updateProfile(input: { name: string; email: string }): Pro
 
 export async function changePassword(input: { current: string; next: string }): Promise<Result> {
   const me = await requireAdmin(undefined, { allowTemporary: true });
+  if (me.support) return SUPPORT_ONLY;
   const account = await prisma.account.findUniqueOrThrow({ where: { id: me.id } });
   if (!(await verifyPassword(input.current, account.passwordHash))) {
     return { success: false, error: "La contraseña actual no es correcta" };
@@ -141,6 +145,7 @@ export async function changePassword(input: { current: string; next: string }): 
 
 export async function closeOtherSessions(): Promise<Result> {
   const me = await requireAdmin();
+  if (me.support) return SUPPORT_ONLY;
   await prisma.session.deleteMany({ where: { accountId: me.id, NOT: { id: me.sessionId } } });
   revalidatePath("/admin/ajustes/mi-cuenta");
   return { success: true };
@@ -239,5 +244,32 @@ export async function saveBusiness(input: BusinessInput): Promise<Result> {
     data: { name, address: clean(input.address, 200), taxId, phone: clean(input.phone, 40) },
   });
   revalidatePath("/", "layout");
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// SOPORTE DE LA PLATAFORMA
+// ---------------------------------------------------------------------------
+
+/** Dirección del panel de la plataforma, para volver al salir del modo soporte. */
+function platformHome() {
+  const host = process.env.PLATFORM_HOST?.trim() || process.env.ROOT_DOMAIN?.trim();
+  if (host) return `https://${host.replace(/^\./, "")}/plataforma`;
+  return process.env.NODE_ENV !== "production" ? "http://localhost:3000/plataforma" : "/plataforma";
+}
+
+/** Sale del modo soporte: cierra esa sesión y vuelve a la plataforma. */
+export async function exitSupport() {
+  const me = await requireAdmin();
+  if (!me.support) redirect("/admin");
+  await endSession();
+  redirect(platformHome());
+}
+
+/** El dueño puede cerrar en cualquier momento las sesiones de soporte abiertas en su restaurante. */
+export async function closeSupportSessions(): Promise<Result> {
+  await requireAdmin("OWNER");
+  await prisma.session.deleteMany({ where: { accountId: null } });
+  revalidatePath("/admin/ajustes/cuentas");
   return { success: true };
 }

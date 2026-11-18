@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
-import { startSession } from "@/lib/session";
+import { startSession, startSupportSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Entrada directa después del registro público: el enlace trae un token de un solo uso
- * (vence a los 10 minutos). Si sirve, abre la sesión en este restaurante y lleva al panel.
+ * Entrada directa con un enlace de un solo uso: después del registro público (vence a los 10 minutos)
+ * o cuando la plataforma entra como soporte (vence a los 2 minutos). Abre la sesión y lleva al panel.
  */
 export async function GET(request: Request) {
   const token = new URL(request.url).searchParams.get("t") ?? "";
@@ -17,7 +17,12 @@ export async function GET(request: Request) {
   const ticket = await prisma.loginTicket.findUnique({ where: { id }, include: { account: true } });
   if (!ticket) redirect("/login");
   await prisma.loginTicket.delete({ where: { id } });
-  if (ticket.expiresAt < new Date() || !ticket.account.active) redirect("/login");
+  if (ticket.expiresAt < new Date()) redirect("/login");
+  if (ticket.supportName && !ticket.account) {
+    await startSupportSession(ticket.supportName);
+    redirect("/admin");
+  }
+  if (!ticket.account?.active) redirect("/login");
   await startSession(ticket.account);
   redirect("/admin?bienvenida=1");
 }

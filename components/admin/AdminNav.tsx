@@ -113,7 +113,7 @@ export function AdminSidebar({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-white truncate">{account.name}</p>
-            <p className="text-xs text-sidebar-foreground/60">{account.role === "OWNER" ? "Dueño" : "Administrador"}</p>
+            <p className="text-xs text-sidebar-foreground/60">{account.role === "SUPPORT" ? "Soporte de Ristemo" : account.role === "OWNER" ? "Dueño" : "Administrador"}</p>
           </div>
         </div>
         <form action={logoutAdmin}>

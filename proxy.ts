@@ -21,7 +21,7 @@ async function restaurantAdmin(request: NextRequest) {
     if (request.cookies.has(SESSION_COOKIE)) res.cookies.delete(SESSION_COOKIE);
     return res;
   }
-  if (session.account.mustChangePassword && !pathname.startsWith("/admin/ajustes/mi-cuenta")) {
+  if (session.account?.mustChangePassword && !pathname.startsWith("/admin/ajustes/mi-cuenta")) {
     return NextResponse.redirect(new URL("/admin/ajustes/mi-cuenta", request.url));
   }
   return NextResponse.next();

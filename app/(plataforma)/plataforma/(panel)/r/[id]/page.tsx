@@ -6,6 +6,7 @@ import { defaultRestaurantId, restaurantStats, restaurantUrl } from "@/lib/platf
 import { formatMoney } from "@/lib/config";
 import { RestaurantAdmin } from "@/components/platform/RestaurantAdmin";
 import { SubscriptionAdmin } from "@/components/platform/SubscriptionAdmin";
+import { SupportEntry } from "@/components/platform/SupportEntry";
 import { billingLabel } from "@/components/platform/BillingBadge";
 import { billingOf, fmtDay, getPlatformSettings } from "@/lib/billing";
 import { isoDay } from "@/lib/period";
@@ -17,7 +18,7 @@ const fmt = (d: Date | null) => (d ? d.toLocaleString("es-HN", { dateStyle: "med
 export default async function RestaurantePlataformaPage({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
-  const [r, stats, defaultId, accounts, plans, settings, subPayments] = await Promise.all([
+  const [r, stats, defaultId, accounts, plans, settings, subPayments, supportLog] = await Promise.all([
     rootPrisma.restaurant.findUnique({ where: { id } }),
     restaurantStats([id]),
     defaultRestaurantId(),
@@ -25,6 +26,7 @@ export default async function RestaurantePlataformaPage({ params }: { params: Pr
     rootPrisma.plan.findMany({ orderBy: { position: "asc" } }),
     getPlatformSettings(),
     rootPrisma.subscriptionPayment.findMany({ where: { restaurantId: id }, orderBy: { createdAt: "desc" } }),
+    rootPrisma.supportAccess.findMany({ where: { restaurantId: id }, orderBy: { createdAt: "desc" }, take: 10 }),
   ]);
   if (!r) notFound();
   const s = stats.get(id);
@@ -97,6 +99,14 @@ export default async function RestaurantePlataformaPage({ params }: { params: Pr
             recordedBy: p.recordedBy,
             createdAt: p.createdAt.toISOString(),
           }))}
+        />
+      </div>
+
+      <div className="mb-5">
+        <SupportEntry
+          restaurantId={r.id}
+          active={r.status === "ACTIVE"}
+          accesses={supportLog.map((a) => ({ id: a.id, userName: a.userName, reason: a.reason, createdAt: a.createdAt.toISOString() }))}
         />
       </div>
 

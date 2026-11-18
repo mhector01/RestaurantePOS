@@ -18,7 +18,13 @@ const TOUCH_EVERY = 60 * 60_000; // Renueva el vencimiento como mucho una vez po
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export type AdminRole = "OWNER" | "ADMIN";
-export type SessionAccount = Pick<Account, "id" | "name" | "email" | "role" | "mustChangePassword"> & { sessionId: string };
+export type SessionAccount = Pick<Account, "id" | "name" | "email" | "role" | "mustChangePassword"> & {
+  sessionId: string;
+  /** Sesión de soporte de la plataforma: actúa como dueño, pero sin cuenta propia (id = -1). */
+  support: boolean;
+};
+
+export const SUPPORT_HOURS = 2;
 
 /** Cookie "Secure" solo si la petición llegó por HTTPS (detrás del proxy de Coolify se ve en x-forwarded-proto). */
 async function isHttps() {
@@ -42,17 +48,36 @@ export async function startSession(account: Pick<Account, "id">) {
   });
 }
 
-type Valid = Session & { account: Account; restaurant: Restaurant };
+type Valid = Session & { account: Account | null; restaurant: Restaurant };
 
-/** ¿La sesión sigue abierta, es de este restaurante, la cuenta está activa y el restaurante no está bloqueado? */
+/**
+ * ¿La sesión sigue abierta, es de este restaurante y el restaurante no está bloqueado?
+ * Además: o es de una cuenta activa, o es una sesión de soporte.
+ */
 function isUsable(s: Valid | null, restaurantId: number | undefined, graceDays: number): s is Valid {
   return (
     !!s &&
     s.restaurantId === restaurantId &&
     s.expiresAt > new Date() &&
-    s.account.active &&
+    (s.account ? s.account.active : !!s.supportName) &&
     !isBlocked(s.restaurant, graceDays)
   );
+}
+
+/** Sesión de soporte: sin cuenta del restaurante, vence a las pocas horas y no se renueva. */
+export async function startSupportSession(supportName: string) {
+  const token = randomBytes(32).toString("base64url");
+  const ua = ((await headers()).get("user-agent") ?? "").slice(0, 300);
+  await prisma.session.create({
+    data: { id: hashToken(token), supportName, userAgent: ua, expiresAt: new Date(Date.now() + SUPPORT_HOURS * 60 * 60_000) },
+  });
+  (await cookies()).set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: await isHttps(),
+    path: "/",
+    maxAge: SUPPORT_HOURS * 60 * 60,
+  });
 }
 
 /**
@@ -75,6 +100,9 @@ export const getAdmin = cache(async (): Promise<SessionAccount | null> => {
   if (!token) return null;
   const s = await prisma.session.findUnique({ where: { id: hashToken(token) }, include: { account: true, restaurant: true } });
   if (!isUsable(s, s?.restaurantId, (await getPlatformSettings()).graceDays)) return null; // el filtro automático ya garantiza que es de este restaurante
+  if (!s.account) {
+    return { id: -1, name: `Soporte · ${s.supportName}`, email: "", role: "OWNER", mustChangePassword: false, sessionId: s.id, support: true };
+  }
   if (Date.now() - s.lastSeenAt.getTime() > TOUCH_EVERY) {
     await prisma.session.update({
       where: { id: s.id },
@@ -82,7 +110,7 @@ export const getAdmin = cache(async (): Promise<SessionAccount | null> => {
     });
   }
   const { id, name, email, role, mustChangePassword } = s.account;
-  return { id, name, email, role, mustChangePassword, sessionId: s.id };
+  return { id, name, email, role, mustChangePassword, sessionId: s.id, support: false };
 });
 
 export class AuthError extends Error {}
