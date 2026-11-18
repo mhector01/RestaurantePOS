@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction } from "@/lib/client-action";
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, KeyRound, Loader2, LockKeyhole } from "lucide-react";
@@ -18,7 +19,7 @@ export function LoginForm({ mode, business, next }: { mode: "login" | "setup"; b
     setLoading(true);
     setError("");
     const data = new FormData(e.currentTarget);
-    const result = setup ? await setupOwner(data) : await loginAdmin(data);
+    const result = await callAction(() => (setup ? setupOwner(data) : loginAdmin(data)));
     // Si todo sale bien la acción redirige; aquí solo llegan los errores
     if (result?.error) {
       setError(result.error);

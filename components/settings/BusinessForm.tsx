@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction } from "@/lib/client-action";
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ export function BusinessForm({ initial }: { initial: BusinessInput }) {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await saveBusiness(form);
+      const res = await callAction(() => saveBusiness(form));
       if (!res.success) return toast.error(res.error ?? "No se pudo guardar");
       toast.success("Datos del negocio guardados");
     } finally {

@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction, PASSWORD_LOST } from "@/lib/client-action";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -32,7 +33,7 @@ export function MyAccount({ me, sessions }: { me: Me; sessions: SessionRow[] }) 
   const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy("profile");
-    const res = await updateProfile(profile);
+    const res = await callAction(() => updateProfile(profile));
     setBusy(null);
     if (!res.success) return toast.error(res.error);
     toast.success("Datos actualizados");
@@ -42,7 +43,7 @@ export function MyAccount({ me, sessions }: { me: Me; sessions: SessionRow[] }) 
     e.preventDefault();
     if (pw.next !== pw.confirm) return toast.error("Las contraseñas nuevas no coinciden");
     setBusy("password");
-    const res = await changePassword({ current: pw.current, next: pw.next });
+    const res = await callAction(() => changePassword({ current: pw.current, next: pw.next }), PASSWORD_LOST);
     setBusy(null);
     if (!res.success) return toast.error(res.error);
     setPw({ current: "", next: "", confirm: "" });
@@ -53,7 +54,7 @@ export function MyAccount({ me, sessions }: { me: Me; sessions: SessionRow[] }) 
 
   const closeOthers = async () => {
     setBusy("sessions");
-    const res = await closeOtherSessions();
+    const res = await callAction(() => closeOtherSessions());
     setBusy(null);
     if (!res.success) return toast.error(res.error);
     toast.success("Se cerraron las demás sesiones");

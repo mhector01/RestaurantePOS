@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction, PASSWORD_LOST } from "@/lib/client-action";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -17,7 +18,7 @@ export function PlatformPasswordForm({ temporary }: { temporary: boolean }) {
     e.preventDefault();
     if (pw.next !== pw.confirm) return toast.error("Las contraseñas nuevas no coinciden");
     setBusy(true);
-    const res = await changePlatformPassword({ current: pw.current, next: pw.next });
+    const res = await callAction(() => changePlatformPassword({ current: pw.current, next: pw.next }), PASSWORD_LOST);
     setBusy(false);
     if (!res.success) return toast.error(res.error);
     setPw({ current: "", next: "", confirm: "" });

@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction } from "@/lib/client-action";
 import { useState } from "react";
 import { Building2, Loader2 } from "lucide-react";
 import { loginPlatform } from "@/app/platform-actions";
@@ -15,7 +16,8 @@ export function PlatformLoginForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await loginPlatform(new FormData(e.currentTarget));
+    const data = new FormData(e.currentTarget);
+    const res = await callAction(() => loginPlatform(data));
     if (res?.error) {
       setError(res.error);
       setLoading(false);

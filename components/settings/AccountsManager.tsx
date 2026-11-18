@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction } from "@/lib/client-action";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -185,7 +186,7 @@ function NewAccountDialog({ onCreated }: { onCreated: (h: Handoff) => void }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await createAccount(form);
+    const res = await callAction(() => createAccount(form));
     setLoading(false);
     if (!res.success || !res.password) return toast.error(res.error ?? "No se pudo crear");
     setOpen(false);

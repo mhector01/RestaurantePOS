@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction } from "@/lib/client-action";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -30,7 +31,7 @@ export function RestaurantAdmin({ restaurant: r, rootDomain, accounts }: Props) 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const res = await updateRestaurant(r.id, form);
+    const res = await callAction(() => updateRestaurant(r.id, form));
     setSaving(false);
     if (!res.success) return toast.error(res.error);
     toast.success("Datos guardados");
@@ -39,7 +40,7 @@ export function RestaurantAdmin({ restaurant: r, rootDomain, accounts }: Props) 
 
   const grant = async (email: string, name: string) => {
     setGranting(true);
-    const res = await grantOwnerAccess(r.id, { email, name });
+    const res = await callAction(() => grantOwnerAccess(r.id, { email, name }));
     setGranting(false);
     if (!res.success || !res.password || !res.email) return toast.error(res.error ?? "No se pudo");
     setOwner({ email: "", name: "" });

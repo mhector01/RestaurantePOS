@@ -1,5 +1,6 @@
 "use client";
 
+import { callAction } from "@/lib/client-action";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -40,7 +41,7 @@ export function NewRestaurantDialog() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await createRestaurant(form);
+    const res = await callAction(() => createRestaurant(form));
     setLoading(false);
     if (!res.success || !res.password || !res.email) return toast.error(res.error ?? "No se pudo crear");
     setOpen(false);
