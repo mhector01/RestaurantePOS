@@ -1,24 +1,9 @@
-import { PrismaClient } from '@prisma/client'
-import { Pool } from 'pg'
-import { PrismaPg } from '@prisma/adapter-pg'
+// Cliente de Prisma del restaurante actual: cada consulta queda filtrada por restaurante.
+// Para tareas de la plataforma (sin filtro) usa `rootPrisma` de "@/lib/prisma-base".
+import { rootPrisma } from "@/lib/prisma-base";
+import { currentRestaurantId } from "@/lib/tenant";
+import { tenantExtension } from "@/lib/tenant-scope";
 
-const prismaClientSingleton = () => {
-  // 1. Creamos la conexión usando el driver oficial de Postgres
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-  
-  // 2. Lo conectamos al adaptador de Prisma 7
-  const adapter = new PrismaPg(pool)
-  
-  // 3. Inicializamos PrismaClient exclusivamente con el adaptador
-  return new PrismaClient({ adapter })
-}
+const prisma = rootPrisma.$extends(tenantExtension(currentRestaurantId));
 
-declare global {
-  var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>
-}
-
-const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
-
-export default prisma
-
-if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma
+export default prisma;

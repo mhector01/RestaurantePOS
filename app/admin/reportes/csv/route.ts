@@ -1,7 +1,7 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import prisma from "@/lib/prisma";
 import { ADMIN_COOKIE, isValidAdminToken } from "@/lib/auth";
-import { BUSINESS } from "@/lib/config";
+import { getBusiness } from "@/lib/tenant";
 import { isoDay, resolvePeriod } from "@/lib/period";
 import { productSales, profitSummary, salesSummary, taxSummary } from "@/lib/reports";
 
@@ -19,7 +19,7 @@ const date = (d: Date) => d.toLocaleDateString("es-HN", { day: "2-digit", month:
 /** Descargas de los reportes en CSV (abre directo en Excel, con acentos). */
 export async function GET(request: Request) {
   const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value))) {
+  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
     return new Response("No autorizado", { status: 401 });
   }
   const url = new URL(request.url);
@@ -135,7 +135,7 @@ export async function GET(request: Request) {
     return new Response("Reporte desconocido", { status: 400 });
   }
 
-  const header: Cell[][] = [[BUSINESS.name], [`Reporte: ${name.replace("-", " de ")}`], [`Periodo: ${rangeText}`], []];
+  const header: Cell[][] = [[(await getBusiness()).name], [`Reporte: ${name.replace("-", " de ")}`], [`Periodo: ${rangeText}`], []];
   name = `${name}-${isoDay(period.start)}_${isoDay(last)}`;
   const body = "﻿" + [...header, ...rows].map((r) => r.map(cell).join(",")).join("\r\n");
   return new Response(body, {

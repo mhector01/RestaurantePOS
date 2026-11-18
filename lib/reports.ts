@@ -244,7 +244,7 @@ export async function taxSummary(period: Period) {
     prisma.invoice.findMany({ where: { createdAt: range }, orderBy: { sequence: "asc" } }),
     prisma.purchase.findMany({ where: { status: "RECEIVED", date: range }, include: { supplier: true } }),
     prisma.payment.findMany({ where: { createdAt: range }, include: { invoices: { where: { status: "ISSUED" }, select: { id: true } } } }),
-    prisma.fiscalSettings.findUnique({ where: { id: 1 } }),
+    prisma.fiscalSettings.findFirst(),
   ]);
   const valid = invoices.filter((i) => i.status === "ISSUED");
   const sum = (k: "exempt" | "exonerated" | "taxable15" | "taxable18" | "isv15" | "isv18" | "total") =>

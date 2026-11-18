@@ -4,7 +4,7 @@ import { ChefHat, Settings } from "lucide-react";
 import { BrandHeader } from "@/components/Brand";
 import prisma from "@/lib/prisma";
 import { normalizeShape } from "@/lib/floor";
-import { BUSINESS } from "@/lib/config";
+import { getBusiness } from "@/lib/tenant";
 import { FloorPlan, type FloorTable } from "@/components/pos/FloorPlan";
 import { WaiterChip } from "@/components/pos/WaiterChip";
 import { PinPad } from "@/components/PinPad";
@@ -95,7 +95,7 @@ export default async function Home() {
       <header className="sticky top-0 z-20 bg-background/85 backdrop-blur border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
           <div className="flex-1 min-w-0">
-            <BrandHeader business={BUSINESS.name} subtitle="Punto de venta" />
+            <BrandHeader business={(await getBusiness()).name} subtitle="Punto de venta" />
           </div>
           <WaiterChip name={waiter.name} dark />
           <Link

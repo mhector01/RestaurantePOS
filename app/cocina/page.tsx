@@ -1,11 +1,13 @@
 import prisma from "@/lib/prisma";
-import { BUSINESS } from "@/lib/config";
+import { getBusiness } from "@/lib/tenant";
 import { AutoRefresh } from "@/components/pos/AutoRefresh";
 import { KitchenBoard, type KitchenTicket } from "@/components/kitchen/KitchenBoard";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: `Cocina · ${BUSINESS.name}` };
+export async function generateMetadata() {
+  return { title: `Cocina · ${(await getBusiness()).name}` };
+}
 
 // Los platos listos siguen visibles un rato por si hay que deshacer.
 const READY_WINDOW_MIN = 15;
@@ -22,7 +24,7 @@ function loadKitchenItems() {
 }
 
 export default async function CocinaPage() {
-  const items = await loadKitchenItems();
+  const [items, business] = await Promise.all([loadKitchenItems(), getBusiness()]);
 
   const byOrder = new Map<number, KitchenTicket>();
   for (const i of items) {
@@ -51,7 +53,7 @@ export default async function CocinaPage() {
   return (
     <>
       <AutoRefresh seconds={5} />
-      <KitchenBoard business={BUSINESS.name} tickets={[...byOrder.values()]} />
+      <KitchenBoard business={business.name} tickets={[...byOrder.values()]} />
     </>
   );
 }

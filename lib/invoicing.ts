@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { currentRestaurantId } from "@/lib/tenant";
 import type { Prisma } from "@prisma/client";
 import {
   computeTotals,
@@ -15,10 +16,16 @@ export const LOW_RANGE_LEFT = 50;
 export const DEADLINE_WARN_DAYS = 30;
 
 export async function getFiscalSettings() {
-  return (
-    (await prisma.fiscalSettings.findUnique({ where: { id: 1 } })) ??
-    (await prisma.fiscalSettings.create({ data: { id: 1 } }))
-  );
+  const found = await prisma.fiscalSettings.findFirst();
+  if (found) return found;
+  // Primera vez del restaurante. Si dos pantallas la crean a la vez, gana una y la otra la lee.
+  try {
+    return await prisma.fiscalSettings.create({ data: {} });
+  } catch (e) {
+    const again = await prisma.fiscalSettings.findFirst();
+    if (again) return again;
+    throw e;
+  }
 }
 
 function startOfToday() {
@@ -145,10 +152,12 @@ export async function issueInvoice(input: {
   const customerName = (input.customer?.name || "").trim() || "Consumidor final";
 
   try {
+    const restaurantId = await currentRestaurantId();
     const created = await prisma.$transaction(async (tx) => {
+      // SQL directo: el filtro automático no aplica aquí, por eso va el restaurante a mano
       const rows = await tx.$queryRaw<{ id: number }[]>`
         SELECT id FROM "InvoiceRange"
-        WHERE active = true AND "nextNumber" <= "rangeTo" AND deadline >= ${startOfToday()}
+        WHERE "restaurantId" = ${restaurantId} AND active = true AND "nextNumber" <= "rangeTo" AND deadline >= ${startOfToday()}
         ORDER BY id ASC
         LIMIT 1
         FOR UPDATE`;

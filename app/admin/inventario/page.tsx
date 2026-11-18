@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { PackagePlus, ShoppingCart, Truck } from "lucide-react";
 import prisma from "@/lib/prisma";
-import { BUSINESS, formatMoney } from "@/lib/config";
+import { formatMoney } from "@/lib/config";
+import { getBusiness } from "@/lib/tenant";
 import { formatQty, stockLevel, suggestedOrder } from "@/lib/inventory";
 import { MiniKpi, SectionBar } from "@/components/inventory/InventoryTabs";
 import { IngredientDialog } from "@/components/inventory/IngredientDialog";
@@ -18,6 +19,7 @@ function startOfMonth() {
 
 export default async function InventarioPage({ searchParams }: { searchParams: Promise<{ filtro?: string }> }) {
   const { filtro } = await searchParams;
+  const business = await getBusiness();
   const since = startOfMonth();
   const [ingredients, suppliers, monthPurchases, unpaid, waste] = await Promise.all([
     prisma.ingredient.findMany({
@@ -101,7 +103,7 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
             {shopping.map((g) => {
               const est = g.items.reduce((s, i) => s + i.qty * i.cost, 0);
               const text = [
-                `Hola${g.supplierId ? ` ${g.name}` : ""}, de ${BUSINESS.name} queremos hacer el siguiente pedido:`,
+                `Hola${g.supplierId ? ` ${g.name}` : ""}, de ${business.name} queremos hacer el siguiente pedido:`,
                 ...g.items.map((i) => (i.qty > 0 ? `• ${formatQty(i.qty, i.unit)} de ${i.name}` : `• ${i.name} (cantidad por confirmar)`)),
                 "¡Gracias!",
               ].join("\n");

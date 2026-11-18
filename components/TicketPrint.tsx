@@ -1,7 +1,8 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { BUSINESS, PAYMENT_LABEL, formatMoney } from "@/lib/config";
+import { PAYMENT_LABEL, formatMoney } from "@/lib/config";
+import { useBusiness } from "@/components/BusinessProvider";
 import { InvoiceBody } from "@/components/InvoicePrint";
 import type { InvoiceView } from "@/lib/fiscal";
 
@@ -32,6 +33,7 @@ export function TicketPrint({
   received?: number;
   change?: number;
 }) {
+  const business = useBusiness();
   // Se monta directo en <body> para que la impresión no herede posiciones del diálogo.
   // Solo se renderiza tras un cobro (en el navegador), nunca en el servidor.
   if (typeof document === "undefined") return null;
@@ -49,9 +51,9 @@ export function TicketPrint({
   return createPortal(
     <div className="print-area hidden print:block bg-white text-black font-mono text-[11px] leading-snug">
       <div className="text-center pb-2 mb-2 border-b border-dashed border-black">
-        <p className="text-sm font-bold uppercase">{BUSINESS.name}</p>
-        <p>{BUSINESS.address}</p>
-        {BUSINESS.taxId && <p>RTN/NIT: {BUSINESS.taxId}</p>}
+        <p className="text-sm font-bold uppercase">{business.name}</p>
+        <p>{business.address}</p>
+        {business.taxId && <p>RTN/NIT: {business.taxId}</p>}
       </div>
 
       <div className="mb-2 space-y-0.5">

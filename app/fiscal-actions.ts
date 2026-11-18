@@ -1,8 +1,9 @@
 "use server";
 
 import prisma from "@/lib/prisma";
+import { currentRestaurantId } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { ADMIN_COOKIE, isValidAdminToken } from "@/lib/auth";
 import { normalizeCai, normalizeRtn, normalizeTaxRate, parseInvoiceNumber, type InvoiceLine } from "@/lib/fiscal";
 import { issueInvoice, toInvoiceView } from "@/lib/invoicing";
@@ -11,7 +12,7 @@ type Result = { success: boolean; error?: string };
 
 async function requireAdmin() {
   const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value))) {
+  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
     throw new Error("No autorizado");
   }
 }
@@ -52,7 +53,7 @@ export async function saveFiscalSettings(input: FiscalInput): Promise<Result> {
     email: clean(input.email, 100),
     footer: clean(input.footer, 120),
   };
-  await prisma.fiscalSettings.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
+  await prisma.fiscalSettings.upsert({ where: { restaurantId: await currentRestaurantId() }, create: data, update: data });
   refresh();
   return { success: true };
 }

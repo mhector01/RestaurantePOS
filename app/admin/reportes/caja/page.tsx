@@ -2,12 +2,14 @@ import { Banknote, CreditCard, Receipt, TrendingUp, Trophy } from "lucide-react"
 import prisma from "@/lib/prisma";
 import { PrintAndCloseButton } from "@/components/PrintAndCloseButton";
 import { PageHeader } from "@/components/admin/AdminNav";
-import { BUSINESS, formatMoney } from "@/lib/config";
+import { formatMoney } from "@/lib/config";
+import { getBusiness } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportesPage() {
+  const business = await getBusiness();
   const [ordenesPagadas, openAccounts] = await Promise.all([
     prisma.order.findMany({
       where: { status: "PAID" },
@@ -48,7 +50,7 @@ export default async function ReportesPage() {
     <>
       {/* ---------- Corte impreso (solo al imprimir) ---------- */}
       <div className="print-area hidden print:block font-mono text-[11px] text-black bg-white">
-        <p className="text-center font-bold text-sm">{BUSINESS.name}</p>
+        <p className="text-center font-bold text-sm">{business.name}</p>
         <p className="text-center font-bold">CORTE DE CAJA (Z)</p>
         <p className="text-center mb-2">{now.toLocaleString("es")}</p>
         <p>--------------------------------</p>

@@ -22,7 +22,7 @@ async function isHttps() {
 
 async function requireAdmin() {
   const cookieStore = await cookies();
-  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value))) {
+  if (!(await isValidAdminToken(cookieStore.get(ADMIN_COOKIE)?.value, (await headers()).get("host")))) {
     throw new Error("No autorizado");
   }
 }
@@ -577,7 +577,7 @@ export async function deleteProduct(id: number) {
 export async function createCategory(name: string) {
   await requireAdmin();
   const clean = name.trim();
-  const existing = await prisma.category.findUnique({ where: { name: clean } });
+  const existing = await prisma.category.findFirst({ where: { name: clean } });
   if (existing) return existing;
   const created = await prisma.category.create({ data: { name: clean } });
   revalidatePath("/admin/productos");
@@ -739,7 +739,7 @@ export async function updateTable(
   if (data.number !== undefined) {
     const n = Math.round(data.number);
     if (!(n >= 1)) return { success: false, error: "El número de mesa debe ser 1 o más." };
-    const clash = await prisma.table.findUnique({ where: { number: n } });
+    const clash = await prisma.table.findFirst({ where: { number: n } });
     if (clash && clash.id !== id) return { success: false, error: `Ya existe la mesa ${n}.` };
   }
   await prisma.table.update({
@@ -757,7 +757,7 @@ export async function updateTable(
 
 /** Habilita la venta de mostrador / para llevar (mesa virtual número 0). */
 export async function enableCounter() {
-  const exists = await prisma.table.findUnique({ where: { number: 0 } });
+  const exists = await prisma.table.findFirst({ where: { number: 0 } });
   if (!exists) await prisma.table.create({ data: { number: 0 } });
   revalidatePath("/");
   revalidatePath("/admin/mesas");
@@ -776,7 +776,7 @@ export async function loginAdmin(formData: FormData) {
 
   if (password === expected) {
     const cookieStore = await cookies();
-    cookieStore.set(ADMIN_COOKIE, (await adminToken())!, {
+    cookieStore.set(ADMIN_COOKIE, (await adminToken((await headers()).get("host")))!, {
       httpOnly: true,
       sameSite: "lax",
       secure: await isHttps(),
@@ -800,7 +800,7 @@ export async function logoutAdmin() {
 
 export async function saveUser(id: number | null, name: string, pin: string) {
   await requireAdmin();
-  const clash = await prisma.user.findUnique({ where: { pin } });
+  const clash = await prisma.user.findFirst({ where: { pin } });
   if (clash && clash.id !== id) {
     return { success: false, error: "Ese PIN ya lo usa otra persona." };
   }
@@ -830,7 +830,7 @@ export async function deleteUser(id: number) {
 
 // --- LOGIN DE MESEROS (PIN PAD) ---
 export async function loginWaiter(pin: string) {
-  const user = await prisma.user.findUnique({ where: { pin } });
+  const user = await prisma.user.findFirst({ where: { pin } });
   if (!user) return { error: "PIN incorrecto" };
 
   const cookieStore = await cookies();

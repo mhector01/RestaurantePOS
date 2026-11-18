@@ -6,164 +6,247 @@ datasource db {
   provider = "postgresql"
 }
 
+// ---------------------------------------------------------------------------
+// RESTAURANTES (SaaS): cada cliente es un restaurante y todo lo demás le pertenece
+// ---------------------------------------------------------------------------
+
+model Restaurant {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique // Subdominio: <slug>.tudominio.com
+  name      String   @default("") // Vacío = se usa NEXT_PUBLIC_BUSINESS_NAME
+  address   String   @default("")
+  taxId     String   @default("") // RTN que se imprime en el ticket
+  status    String   @default("ACTIVE") // ACTIVE o SUSPENDED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  areas          Area[]
+  tables         Table[]
+  categories     Category[]
+  products       Product[]
+  comboSlots     ComboSlot[]
+  comboOptions   ComboOption[]
+  orders         Order[]
+  orderItems     OrderItem[]
+  orderItemParts OrderItemPart[]
+  kitchenItems   KitchenItem[]
+  payments       Payment[]
+  users          User[]
+  suppliers      Supplier[]
+  ingredients    Ingredient[]
+  recipeItems    RecipeItem[]
+  purchases      Purchase[]
+  purchaseItems  PurchaseItem[]
+  stockMovements StockMovement[]
+  fiscalSettings FiscalSettings?
+  invoiceRanges  InvoiceRange[]
+  invoices       Invoice[]
+  saleLines      SaleLine[]
+}
 
 // Nuestras tablas
 
 // Salas del local (Salón principal, Terraza…)
 model Area {
-  id        Int      @id @default(autoincrement())
-  name      String
-  position  Int      @default(0)
-  tables    Table[]
-  createdAt DateTime @default(now())
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  name         String
+  position     Int        @default(0)
+  tables       Table[]
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
 }
 
 model Table {
-  id        Int      @id @default(autoincrement())
-  number    Int      @unique
-  status    String   @default("FREE") // FREE o OCCUPIED
-  orders    Order[]
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  number       Int
+  status       String     @default("FREE") // FREE o OCCUPIED
+  orders       Order[]
 
   // Plano: sala, forma, puestos y posición en la cuadrícula (null = acomodo automático)
-  areaId    Int?
-  area      Area?    @relation(fields: [areaId], references: [id], onDelete: SetNull)
-  shape     String   @default("square") // square | round | rect
-  seats     Int      @default(4)
-  x         Int?
-  y         Int?
+  areaId Int?
+  area   Area?  @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  shape  String @default("square") // square | round | rect
+  seats  Int    @default(4)
+  x      Int?
+  y      Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([restaurantId, number])
 }
 
 model Category {
-  id       Int       @id @default(autoincrement())
-  name     String    @unique
-  kitchen  Boolean   @default(true) // Sus productos se envían a la pantalla de cocina
-  products Product[]
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  name         String
+  kitchen      Boolean    @default(true) // Sus productos se envían a la pantalla de cocina
+  products     Product[]
+
+  @@unique([restaurantId, name])
 }
 
 model Product {
-  id          Int         @id @default(autoincrement())
-  name        String
-  price       Float
-  taxRate     String      @default("15") // ISV: "15", "18" (alcohol y tabaco) o "EXENTO"
-  
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  name         String
+  price        Float
+  taxRate      String     @default("15") // ISV: "15", "18" (alcohol y tabaco) o "EXENTO"
+
   // Relación con la tabla Category
   categoryId Int
-  category   Category    @relation(fields: [categoryId], references: [id])
-  
+  category   Category @relation(fields: [categoryId], references: [id])
+
   orderItems   OrderItem[]
   kitchenItems KitchenItem[]
   recipe       RecipeItem[] // Insumos que se descuentan del inventario al venderlo
 
   // Combos: un producto que agrupa otros (ej. hamburguesa + papas + bebida a elegir)
-  isCombo      Boolean       @default(false)
-  comboSlots   ComboSlot[]   @relation("ComboSlots")
+  isCombo      Boolean         @default(false)
+  comboSlots   ComboSlot[]     @relation("ComboSlots")
   comboOptions ComboOption[] // Combos en los que este producto es una opción
   orderParts   OrderItemPart[]
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime        @default(now())
+
+  @@index([restaurantId])
 }
 
 // Parte de un combo: "Plato fuerte", "Acompañante", "Bebida". Con una sola opción es fija;
 // con varias, el mesero elige una al pedir.
 model ComboSlot {
-  id       Int           @id @default(autoincrement())
-  comboId  Int
-  combo    Product       @relation("ComboSlots", fields: [comboId], references: [id], onDelete: Cascade)
-  name     String
-  quantity Int           @default(1) // Ej. 2 piezas de pollo
-  position Int           @default(0)
-  options  ComboOption[]
+  id           Int           @id @default(autoincrement())
+  restaurantId Int           @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id])
+  comboId      Int
+  combo        Product       @relation("ComboSlots", fields: [comboId], references: [id], onDelete: Cascade)
+  name         String
+  quantity     Int           @default(1) // Ej. 2 piezas de pollo
+  position     Int           @default(0)
+  options      ComboOption[]
+
+  @@index([restaurantId])
 }
 
 model ComboOption {
-  id         Int       @id @default(autoincrement())
-  slotId     Int
-  slot       ComboSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  productId  Int
-  product    Product   @relation(fields: [productId], references: [id])
-  extraPrice Float     @default(0) // Recargo por elegir esta opción (ej. +L10 por jugo natural)
-  position   Int       @default(0)
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  slotId       Int
+  slot         ComboSlot  @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  productId    Int
+  product      Product    @relation(fields: [productId], references: [id])
+  extraPrice   Float      @default(0) // Recargo por elegir esta opción (ej. +L10 por jugo natural)
+  position     Int        @default(0)
+
+  @@index([restaurantId])
 }
 
 model Order {
-  id        Int         @id @default(autoincrement())
-  tableId   Int
-  table     Table       @relation(fields: [tableId], references: [id])
-  status    String      @default("OPEN") // OPEN o PAID
+  id           Int           @id @default(autoincrement())
+  restaurantId Int           @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id])
+  tableId      Int
+  table        Table         @relation(fields: [tableId], references: [id])
+  status       String        @default("OPEN") // OPEN o PAID
   // Nombre de referencia ("Familia López"); obligatorio en pedidos para llevar
-  name      String?
-  phone     String?
-  items     OrderItem[]
-  payments  Payment[]   // Para dividir la cuenta
+  name         String?
+  phone        String?
+  items        OrderItem[]
+  payments     Payment[] // Para dividir la cuenta
   kitchenItems KitchenItem[]
   // --- NUEVO: Relación con el Mesero ---
-  userId    Int?
-  user      User?       @relation(fields: [userId], references: [id])
-  
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  userId       Int?
+  user         User?         @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([restaurantId])
 }
 
 model OrderItem {
-  id        Int      @id @default(autoincrement())
-  orderId   Int
-  order     Order    @relation(fields: [orderId], references: [id])
-  productId Int
-  product   Product  @relation(fields: [productId], references: [id])
-  quantity  Int      @default(1)
-  price     Float    // Precio guardado al momento de la venta
+  id           Int             @id @default(autoincrement())
+  restaurantId Int             @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id])
+  orderId      Int
+  order        Order           @relation(fields: [orderId], references: [id])
+  productId    Int
+  product      Product         @relation(fields: [productId], references: [id])
+  quantity     Int             @default(1)
+  price        Float // Precio guardado al momento de la venta
   // Combos: lo que se eligió. "variant" identifica la combinación para juntar líneas iguales.
-  variant   String   @default("")
-  parts     OrderItemPart[]
+  variant      String          @default("")
+  parts        OrderItemPart[]
+
+  @@index([restaurantId])
 }
 
 // Lo que lleva cada unidad de un combo vendido (copia de lo elegido al momento de pedir)
 model OrderItemPart {
-  id          Int       @id @default(autoincrement())
-  orderItemId Int
-  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  productId   Int
-  product     Product   @relation(fields: [productId], references: [id])
-  quantity    Int       @default(1)
-  slotName    String
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  orderItemId  Int
+  orderItem    OrderItem  @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  productId    Int
+  product      Product    @relation(fields: [productId], references: [id])
+  quantity     Int        @default(1)
+  slotName     String
+
+  @@index([restaurantId])
 }
 
 // Lo que la cocina tiene que preparar. Va aparte de OrderItem para que cobrar
 // (que descuenta líneas de la cuenta) no borre pedidos que aún se están cocinando.
 model KitchenItem {
-  id        Int       @id @default(autoincrement())
-  orderId   Int
-  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId Int
-  product   Product   @relation(fields: [productId], references: [id])
-  quantity  Int       @default(1)
-  status    String    @default("PENDING") // PENDING → READY → SERVED
-  createdAt DateTime  @default(now())
-  readyAt   DateTime?
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  orderId      Int
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    Int
+  product      Product    @relation(fields: [productId], references: [id])
+  quantity     Int        @default(1)
+  status       String     @default("PENDING") // PENDING → READY → SERVED
+  createdAt    DateTime   @default(now())
+  readyAt      DateTime?
 
-  @@index([status])
+  @@index([restaurantId, status])
 }
 
 model Payment {
-  id        Int      @id @default(autoincrement())
-  orderId   Int
-  order     Order    @relation(fields: [orderId], references: [id])
-  amount    Float    // Monto para dividir cuenta
-  method    String   // CASH, CARD, etc.
-  invoices  Invoice[]
-  saleLines SaleLine[]
-  createdAt DateTime @default(now())
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  orderId      Int
+  order        Order      @relation(fields: [orderId], references: [id])
+  amount       Float // Monto para dividir cuenta
+  method       String // CASH, CARD, etc.
+  invoices     Invoice[]
+  saleLines    SaleLine[]
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  pin       String   @unique // El PIN de 4 dígitos para que el mesero entre
-  role      String   @default("WAITER") // WAITER o ADMIN
-  orders    Order[]
-  createdAt DateTime @default(now())
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  name         String
+  pin          String // El PIN de 4 dígitos para que el mesero entre
+  role         String     @default("WAITER") // WAITER o ADMIN
+  orders       Order[]
+  createdAt    DateTime   @default(now())
+
+  @@unique([restaurantId, pin])
 }
 
 // ---------------------------------------------------------------------------
@@ -171,42 +254,52 @@ model User {
 // ---------------------------------------------------------------------------
 
 model Supplier {
-  id          Int          @id @default(autoincrement())
-  name        String
-  contact     String?
-  phone       String?
-  email       String?
-  taxId       String?      // RTN
-  notes       String?
-  active      Boolean      @default(true)
-  purchases   Purchase[]
-  ingredients Ingredient[] // Insumos que se le compran normalmente
-  createdAt   DateTime     @default(now())
+  id           Int          @id @default(autoincrement())
+  restaurantId Int          @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id])
+  name         String
+  contact      String?
+  phone        String?
+  email        String?
+  taxId        String? // RTN
+  notes        String?
+  active       Boolean      @default(true)
+  purchases    Purchase[]
+  ingredients  Ingredient[] // Insumos que se le compran normalmente
+  createdAt    DateTime     @default(now())
+
+  @@index([restaurantId])
 }
 
 // Insumo / materia prima (o producto de reventa como una gaseosa)
 model Ingredient {
-  id         Int       @id @default(autoincrement())
-  name       String    @unique
-  unit       String    @default("unid") // kg, g, lb, oz, l, ml, unid
-  stock      Float     @default(0)
-  minStock   Float     @default(0) // Punto de reorden: avisar cuando baje de aquí
-  maxStock   Float?    // Stock ideal: hasta dónde reponer al comprar
-  cost       Float     @default(0) // Costo promedio por unidad
-  supplierId Int?
-  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  active     Boolean   @default(true)
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  name         String
+  unit         String     @default("unid") // kg, g, lb, oz, l, ml, unid
+  stock        Float      @default(0)
+  minStock     Float      @default(0) // Punto de reorden: avisar cuando baje de aquí
+  maxStock     Float? // Stock ideal: hasta dónde reponer al comprar
+  cost         Float      @default(0) // Costo promedio por unidad
+  supplierId   Int?
+  supplier     Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  active       Boolean    @default(true)
 
   recipeItems   RecipeItem[]
   purchaseItems PurchaseItem[]
   movements     StockMovement[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([restaurantId, name])
 }
 
 // Receta: cuánto de cada insumo lleva una unidad del producto
 model RecipeItem {
   id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
   productId    Int
   product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
   ingredientId Int
@@ -214,89 +307,106 @@ model RecipeItem {
   quantity     Float
 
   @@unique([productId, ingredientId])
+  @@index([restaurantId])
 }
 
 model Purchase {
-  id         Int            @id @default(autoincrement())
-  supplierId Int?
-  supplier   Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  invoice    String?        // Número de factura del proveedor
-  date       DateTime       @default(now())
-  total      Float
-  tax        Float          @default(0)    // ISV pagado en la factura del proveedor (crédito fiscal)
-  paid       Boolean        @default(true) // false = a crédito, pendiente de pagar
-  paidAt     DateTime?
-  status     String         @default("RECEIVED") // RECEIVED o VOID (anulada)
-  notes      String?
-  items      PurchaseItem[]
-  createdAt  DateTime       @default(now())
+  id           Int            @id @default(autoincrement())
+  restaurantId Int            @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant     @relation(fields: [restaurantId], references: [id])
+  supplierId   Int?
+  supplier     Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  invoice      String? // Número de factura del proveedor
+  date         DateTime       @default(now())
+  total        Float
+  tax          Float          @default(0) // ISV pagado en la factura del proveedor (crédito fiscal)
+  paid         Boolean        @default(true) // false = a crédito, pendiente de pagar
+  paidAt       DateTime?
+  status       String         @default("RECEIVED") // RECEIVED o VOID (anulada)
+  notes        String?
+  items        PurchaseItem[]
+  createdAt    DateTime       @default(now())
 
-  @@index([date])
+  @@index([restaurantId, date])
 }
 
 model PurchaseItem {
   id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
   purchaseId   Int
   purchase     Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   ingredientId Int
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
   quantity     Float
   unitCost     Float
+
+  @@index([restaurantId])
 }
 
 // Kardex: cada entrada o salida de un insumo
 model StockMovement {
   id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
   ingredientId Int
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
-  type         String     // PURCHASE, SALE, WASTE, COUNT, INITIAL, VOID
-  quantity     Float      // + entra, - sale
+  type         String // PURCHASE, SALE, WASTE, COUNT, INITIAL, VOID
+  quantity     Float // + entra, - sale
   stockAfter   Float
-  unitCost     Float      // Costo por unidad al momento del movimiento
+  unitCost     Float // Costo por unidad al momento del movimiento
   note         String?
   purchaseId   Int?
   orderId      Int?
   createdAt    DateTime   @default(now())
 
   @@index([ingredientId, createdAt])
-  @@index([type, createdAt])
+  @@index([restaurantId, type, createdAt])
 }
 
 // ---------------------------------------------------------------------------
 // FACTURACIÓN (Honduras, Régimen de Facturación SAR)
 // ---------------------------------------------------------------------------
 
-// Datos del obligado tributario. Una sola fila (id = 1).
+// Datos del obligado tributario. Una fila por restaurante.
 model FiscalSettings {
-  id          Int      @id @default(1)
-  enabled     Boolean  @default(false) // Emitir factura con CAI en cada cobro
-  legalName   String   @default("")    // Nombre o razón social
-  tradeName   String   @default("")    // Nombre comercial
-  rtn         String   @default("")
-  address     String   @default("")
-  phone       String   @default("")
-  email       String   @default("")
-  footer      String   @default("")    // Mensaje opcional al pie
-  updatedAt   DateTime @updatedAt
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @unique @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  enabled      Boolean    @default(false) // Emitir factura con CAI en cada cobro
+  legalName    String     @default("") // Nombre o razón social
+  tradeName    String     @default("") // Nombre comercial
+  rtn          String     @default("")
+  address      String     @default("")
+  phone        String     @default("")
+  email        String     @default("")
+  footer       String     @default("") // Mensaje opcional al pie
+  updatedAt    DateTime   @updatedAt
 }
 
 // Rango autorizado por la SAR para un CAI
 model InvoiceRange {
-  id            Int       @id @default(autoincrement())
-  cai           String
-  prefix        String    // "000-001-01": establecimiento, punto de emisión, tipo de documento
-  rangeFrom     Int
-  rangeTo       Int
-  nextNumber    Int       // Siguiente correlativo a usar
-  deadline      DateTime  // Fecha límite de emisión
-  active        Boolean   @default(true)
-  invoices      Invoice[]
-  createdAt     DateTime  @default(now())
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  cai          String
+  prefix       String // "000-001-01": establecimiento, punto de emisión, tipo de documento
+  rangeFrom    Int
+  rangeTo      Int
+  nextNumber   Int // Siguiente correlativo a usar
+  deadline     DateTime // Fecha límite de emisión
+  active       Boolean    @default(true)
+  invoices     Invoice[]
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
 }
 
 model Invoice {
   id           Int          @id @default(autoincrement())
-  number       String       @unique // 000-001-01-00000001
+  restaurantId Int          @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id])
+  number       String // 000-001-01-00000001
   sequence     Int
   rangeId      Int
   range        InvoiceRange @relation(fields: [rangeId], references: [id])
@@ -315,15 +425,16 @@ model Invoice {
   discount     Float        @default(0)
   total        Float
   method       String
-  lines        Json         // Copia de lo facturado: [{ name, detail, quantity, unitPrice, total, tax }]
-  issuer       Json         // Copia de los datos del emisor, CAI y rango al momento de emitir
+  lines        Json // Copia de lo facturado: [{ name, detail, quantity, unitPrice, total, tax }]
+  issuer       Json // Copia de los datos del emisor, CAI y rango al momento de emitir
   status       String       @default("ISSUED") // ISSUED o VOID
   voidReason   String?
   voidedAt     DateTime?
-  replacedById Int?         // Si se anuló para reemitirla con otros datos
+  replacedById Int? // Si se anuló para reemitirla con otros datos
   createdAt    DateTime     @default(now())
 
-  @@index([createdAt])
+  @@unique([restaurantId, number])
+  @@index([restaurantId, createdAt])
   @@index([paymentId])
 }
 
@@ -333,24 +444,26 @@ model Invoice {
 // ---------------------------------------------------------------------------
 
 model SaleLine {
-  id           Int      @id @default(autoincrement())
+  id           Int        @id @default(autoincrement())
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
   paymentId    Int
-  payment      Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  payment      Payment    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   orderId      Int
   productId    Int?
   name         String
   categoryName String
-  isCombo      Boolean  @default(false)
+  isCombo      Boolean    @default(false)
   quantity     Int
-  unitPrice    Float    // Con ISV
-  total        Float    // Con ISV
-  net          Float    // Sin ISV
-  tax          Float    // ISV
-  cost         Float    @default(0) // Costo de insumos según receta al momento de vender
+  unitPrice    Float // Con ISV
+  total        Float // Con ISV
+  net          Float // Sin ISV
+  tax          Float // ISV
+  cost         Float      @default(0) // Costo de insumos según receta al momento de vender
   waiterName   String?
-  channel      String   // MESA o LLEVAR
-  createdAt    DateTime @default(now())
+  channel      String // MESA o LLEVAR
+  createdAt    DateTime   @default(now())
 
-  @@index([createdAt])
+  @@index([restaurantId, createdAt])
   @@index([productId])
 }
