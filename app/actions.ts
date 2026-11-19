@@ -16,7 +16,8 @@ import { buildInvoiceLines, issueInvoice, type SoldItem } from "@/lib/invoicing"
 import { normalizeRtn, normalizeTaxRate } from "@/lib/fiscal";
 import { recordSales } from "@/lib/sales";
 import { applyDiscountToLines } from "@/lib/fiscal";
-import { resolveDiscount, type ResolvedDiscount } from "@/lib/discount-server";
+import { resolveDiscount, tipRules, type ResolvedDiscount } from "@/lib/discount-server";
+import { computeTip, type TipInput } from "@/lib/tips";
 import type { DiscountInput } from "@/lib/discounts";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
@@ -402,6 +403,8 @@ async function chargePayment(input: {
   method: string;
   customer?: InvoiceCustomer;
   discount?: DiscountInput | null;
+  /** Propina voluntaria que aceptó el cliente (null = no quiso). */
+  tip?: TipInput | null;
   charged: Charged[];
   /** Aplica el cambio en la cuenta (borrar o reducir líneas). */
   consume: () => Promise<void>;
@@ -433,10 +436,12 @@ async function chargePayment(input: {
     : { discounted: lines, invoiceLines: lines, net: 0, gross: 0 };
   const gross = lines.reduce((s, l) => s + l.total, 0);
   const amount = Math.round((gross - applied.gross) * 100) / 100;
+  // La propina va aparte: no es venta, no lleva ISV y no entra a los importes de la factura
+  const tip = (await tipRules()).enabled ? computeTip(amount, input.tip) : 0;
 
   await input.consume();
   const payment = await prisma.payment.create({
-    data: { orderId: input.orderId, amount, discount: applied.gross, method: input.method },
+    data: { orderId: input.orderId, amount, discount: applied.gross, tip, method: input.method },
     include: { order: { include: { table: true } } },
   });
   if (resolved) {
@@ -467,6 +472,7 @@ async function chargePayment(input: {
     lines: applied.invoiceLines,
     customer,
     discountNet: applied.net,
+    tip,
   });
 
   const remainingItems = input.full ? 0 : await prisma.orderItem.count({ where: { orderId: input.orderId } });
@@ -505,7 +511,8 @@ export async function processProductPayment(
   itemsToPay: { id: number; quantity: number }[],
   method: string,
   customer?: InvoiceCustomer,
-  discount?: DiscountInput | null
+  discount?: DiscountInput | null,
+  tip?: TipInput | null
 ) {
   const charged: (Charged & { remaining: number })[] = [];
   for (const req of itemsToPay) {
@@ -534,6 +541,7 @@ export async function processProductPayment(
     method,
     customer,
     discount,
+    tip,
     charged,
     consume: async () => {
       for (const c of charged) {
@@ -552,7 +560,8 @@ export async function processFullPayment(
   mesaId: number,
   method: string,
   customer?: InvoiceCustomer,
-  discount?: DiscountInput | null
+  discount?: DiscountInput | null,
+  tip?: TipInput | null
 ) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -566,6 +575,7 @@ export async function processFullPayment(
     method,
     customer,
     discount,
+    tip,
     charged: order.items.map((i) => ({
       itemId: i.id,
       productId: i.productId,

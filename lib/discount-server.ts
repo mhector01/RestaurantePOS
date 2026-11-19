@@ -12,12 +12,19 @@ import {
   type DiscountRules,
 } from "@/lib/discounts";
 import { PIN_LIMIT, blockedMinutes, clearFailures, registerFailure } from "@/lib/rate-limit";
+import type { TipRules } from "@/lib/tips";
 
 const clean = (v: unknown, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
 export async function discountRules(): Promise<DiscountRules> {
   const r = await getRestaurant();
   return { limit: r?.discountLimit ?? 10, seniorPercent: r?.seniorPercent ?? 25 };
+}
+
+/** Propina sugerida del restaurante (pre-cuenta y cobro). */
+export async function tipRules(): Promise<TipRules> {
+  const r = await getRestaurant();
+  return { enabled: r?.tipEnabled ?? true, percent: r?.tipPercent ?? 10 };
 }
 
 /** Encargado (rol ADMIN en Personal) dueño de este PIN, con freno contra intentos. */

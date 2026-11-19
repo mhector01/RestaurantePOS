@@ -321,3 +321,33 @@ export async function discountSummary(period: Period) {
     })),
   };
 }
+
+/** Propinas del periodo (no son venta): total, efectivo / tarjeta y por mesero que atendió. */
+export async function tipSummary(period: Period) {
+  const rows = await prisma.payment.findMany({
+    where: { createdAt: { gte: period.start, lt: period.end }, tip: { gt: 0 } },
+    select: { tip: true, amount: true, method: true, order: { select: { user: { select: { name: true } } } } },
+  });
+  const byWaiter = new Map<string, { count: number; amount: number; sales: number }>();
+  let cash = 0;
+  let card = 0;
+  for (const p of rows) {
+    if (p.method.toUpperCase() === "CARD") card += p.tip;
+    else cash += p.tip;
+    const name = p.order.user?.name ?? "Sin asignar";
+    const w = byWaiter.get(name) ?? { count: 0, amount: 0, sales: 0 };
+    w.count += 1;
+    w.amount += p.tip;
+    w.sales += p.amount;
+    byWaiter.set(name, w);
+  }
+  return {
+    total: round2(cash + card),
+    cash: round2(cash),
+    card: round2(card),
+    count: rows.length,
+    byWaiter: [...byWaiter.entries()]
+      .map(([name, w]) => ({ name, count: w.count, amount: round2(w.amount), sales: round2(w.sales) }))
+      .sort((a, b) => b.amount - a.amount),
+  };
+}

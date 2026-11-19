@@ -1,4 +1,4 @@
-import { Banknote, CreditCard, Receipt, TrendingUp, Trophy } from "lucide-react";
+import { Banknote, CreditCard, HandCoins, Receipt, TrendingUp, Trophy } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { PrintAndCloseButton } from "@/components/PrintAndCloseButton";
 import { PageHeader } from "@/components/admin/AdminNav";
@@ -22,13 +22,27 @@ export default async function ReportesPage() {
   let totalCash = 0;
   let totalCard = 0;
   let totalRevenue = 0;
+  // Propinas: no son venta; se cuentan aparte para cuadrar el cajón y entregarlas al personal
+  let tipsCash = 0;
+  let tipsCard = 0;
+  const tipsByWaiter: Record<string, number> = {};
   for (const order of ordenesPagadas) {
     for (const p of order.payments) {
       totalRevenue += p.amount;
-      if (p.method.toUpperCase() === "CARD") totalCard += p.amount;
-      else totalCash += p.amount;
+      if (p.method.toUpperCase() === "CARD") {
+        totalCard += p.amount;
+        tipsCard += p.tip;
+      } else {
+        totalCash += p.amount;
+        tipsCash += p.tip;
+      }
+      if (p.tip > 0) {
+        const who = order.user?.name ?? "Sin asignar";
+        tipsByWaiter[who] = (tipsByWaiter[who] ?? 0) + p.tip;
+      }
     }
   }
+  const totalTips = tipsCash + tipsCard;
 
   const totalOrders = ordenesPagadas.length;
   const avg = totalOrders > 0 ? totalRevenue / totalOrders : 0;
@@ -70,6 +84,30 @@ export default async function ReportesPage() {
           <span>Cuentas cobradas</span>
           <span>{totalOrders}</span>
         </div>
+        {totalTips > 0 && (
+          <>
+            <p>--------------------------------</p>
+            <p className="font-bold">Propinas (no son venta)</p>
+            <div className="flex justify-between">
+              <span>En efectivo</span>
+              <span>{formatMoney(tipsCash)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Con tarjeta</span>
+              <span>{formatMoney(tipsCard)}</span>
+            </div>
+            {Object.entries(tipsByWaiter).map(([name, amount]) => (
+              <div key={name} className="flex justify-between">
+                <span>  {name}</span>
+                <span>{formatMoney(amount)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between font-bold">
+              <span>Efectivo total en cajón</span>
+              <span>{formatMoney(totalCash + tipsCash)}</span>
+            </div>
+          </>
+        )}
         <p>--------------------------------</p>
         <p className="font-bold">Por mesero</p>
         {ranking.map((m) => (
@@ -110,6 +148,30 @@ export default async function ReportesPage() {
           <Card label="Tarjeta" value={formatMoney(totalCard)} Icon={CreditCard} tone="blue" />
           <Card label="Cuentas cobradas" value={String(totalOrders)} sub={`Promedio ${formatMoney(avg)}`} Icon={Receipt} />
         </div>
+
+        {totalTips > 0 && (
+          <section className="mt-4 rounded-2xl border bg-card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <HandCoins className="size-5 text-primary" />
+              <h2 className="font-semibold">Propinas del turno</h2>
+              <span className="ml-auto font-semibold tabular">{formatMoney(totalTips)}</span>
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              No son venta ni llevan ISV. En efectivo: {formatMoney(tipsCash)} (ya están en el cajón: hay {formatMoney(totalCash + tipsCash)} en
+              total). Con tarjeta: {formatMoney(tipsCard)} (hay que entregarlas en efectivo).
+            </p>
+            <ul className="divide-y rounded-xl border">
+              {Object.entries(tipsByWaiter)
+                .sort((a, b) => b[1] - a[1])
+                .map(([name, amount]) => (
+                  <li key={name} className="px-4 py-2.5 flex justify-between text-sm">
+                    <span>{name}</span>
+                    <span className="font-semibold tabular">{formatMoney(amount)}</span>
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )}
 
         <section className="mt-4 rounded-2xl border bg-card overflow-hidden">
           <div className="p-5 flex items-center gap-2">

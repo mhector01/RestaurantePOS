@@ -1,6 +1,9 @@
 "use client";
 
 import type { DiscountRules } from "@/lib/discounts";
+import type { TipRules } from "@/lib/tips";
+import { printWhenReady } from "@/lib/print";
+import { PreBillPrint } from "./PreBillPrint";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -10,6 +13,7 @@ import {
   ChevronUp,
   Minus,
   Plus,
+  Printer,
   ReceiptText,
   Search,
   ShoppingBag,
@@ -76,6 +80,10 @@ interface Props {
   invoicing?: boolean;
   /** Límite de descuento sin autorización y % de tercera edad. */
   discountRules?: DiscountRules;
+  /** Propina sugerida del restaurante (pre-cuenta y cobro). */
+  tipRules?: TipRules;
+  /** Mesero que atiende la cuenta (sale en la pre-cuenta). */
+  waiterName?: string | null;
 }
 
 type OptimisticAction =
@@ -120,6 +128,8 @@ export function OrderWorkspace({
   soldOut = [],
   invoicing = false,
   discountRules = { limit: 10, seniorPercent: 25 },
+  tipRules = { enabled: true, percent: 10 },
+  waiterName = null,
 }: Props) {
   const soldOutSet = useMemo(() => new Set(soldOut), [soldOut]);
   const router = useRouter();
@@ -155,6 +165,13 @@ export function OrderWorkspace({
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<number | "all">("all");
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Pre-cuenta: se monta solo para imprimir y se quita después
+  const [printingPreBill, setPrintingPreBill] = useState(false);
+  const printPreBill = async () => {
+    setPrintingPreBill(true);
+    await printWhenReady();
+    setPrintingPreBill(false);
+  };
   const [checkout, setCheckout] = useState<{ open: boolean; mode: "full" | "split" }>({
     open: false,
     mode: "full",
@@ -377,7 +394,17 @@ export function OrderWorkspace({
           <span className="text-muted-foreground">{paid > 0 ? "Pendiente" : "Total"}</span>
           <span className="text-3xl font-bold tabular tracking-tight">{formatMoney(total)}</span>
         </div>
-        <div className="grid grid-cols-[auto_1fr] gap-2">
+        <div className="grid grid-cols-[auto_auto_1fr] gap-2">
+          <Button
+            variant="outline"
+            className="h-14 rounded-xl px-3.5"
+            disabled={isEmpty || syncing || !orderId}
+            onClick={printPreBill}
+            title="Imprimir pre-cuenta"
+            aria-label="Imprimir pre-cuenta"
+          >
+            <Printer />
+          </Button>
           <Button
             variant="outline"
             className="h-14 rounded-xl px-4"
@@ -412,9 +439,14 @@ export function OrderWorkspace({
     />
   );
 
+  const preBill = printingPreBill && (
+    <PreBillPrint label={label} waiterName={waiterName} items={optimisticItems} paid={paid} tipRules={tipRules} />
+  );
+
   const checkoutDialog = checkoutOrderId && (
     <CheckoutDialog
       discountRules={discountRules}
+      tipRules={tipRules}
       invoicing={invoicing}
       open={checkout.open}
       onOpenChange={(v) => setCheckout((c) => ({ ...c, open: v }))}
@@ -585,6 +617,7 @@ export function OrderWorkspace({
       </>
       )}
       {checkoutDialog}
+      {preBill}
       {comboPicker}
     </div>
   );

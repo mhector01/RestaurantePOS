@@ -20,6 +20,8 @@ export interface TicketPayment {
   };
   /** Factura con CAI, si la facturación está activa. */
   invoice?: InvoiceView | null;
+  /** Propina voluntaria aceptada por el cliente. */
+  tip?: number;
   /** Descuento aplicado en este cobro. */
   discountInfo?: { label: string; amount: number; subtotal: number } | null;
 }
@@ -109,6 +111,18 @@ export function TicketPrint({
         <span>TOTAL</span>
         <span>{formatMoney(payment.amount)}</span>
       </div>
+      {(payment.tip ?? 0) > 0 && (
+        <div className="mt-1 pt-1 border-t border-dashed border-black space-y-0.5">
+          <div className="flex justify-between">
+            <span>Propina voluntaria</span>
+            <span>{formatMoney(payment.tip ?? 0)}</span>
+          </div>
+          <div className="flex justify-between font-bold">
+            <span>TOTAL A PAGAR</span>
+            <span>{formatMoney(payment.amount + (payment.tip ?? 0))}</span>
+          </div>
+        </div>
+      )}
       <p className="mt-1">Pago: {PAYMENT_LABEL[payment.method] ?? payment.method}</p>
       {received !== undefined && received > 0 && (
         <>

@@ -21,6 +21,9 @@ model Restaurant {
   // Descuentos: hasta qué % puede aplicar un mesero sin autorización, y % de ley para tercera edad / discapacidad
   discountLimit Int       @default(10)
   seniorPercent Int       @default(25)
+  // Propina voluntaria: se sugiere en la pre-cuenta y se pregunta al cobrar (nunca se cobra sola)
+  tipEnabled    Boolean   @default(true)
+  tipPercent    Int       @default(10)
   status        String    @default("ACTIVE") // ACTIVE o SUSPENDED
   suspendedAt   DateTime?
   notes         String    @default("") // Notas internas de la plataforma (contacto, plan, acuerdos…); el restaurante no las ve
@@ -248,6 +251,7 @@ model Payment {
   order        Order             @relation(fields: [orderId], references: [id])
   amount       Float // Monto cobrado (ya con el descuento)
   discount     Float             @default(0) // Descuento aplicado en este cobro (con ISV)
+  tip          Float             @default(0) // Propina voluntaria aceptada por el cliente (no es venta ni lleva ISV)
   method       String // CASH, CARD, etc.
   invoices     Invoice[]
   saleLines    SaleLine[]
@@ -444,6 +448,7 @@ model Invoice {
   isv15        Float        @default(0)
   isv18        Float        @default(0)
   discount     Float        @default(0)
+  tip          Float        @default(0) // Propina voluntaria: se imprime debajo del total, fuera de los importes gravados
   total        Float
   method       String
   lines        Json // Copia de lo facturado: [{ name, detail, quantity, unitPrice, total, tax }]

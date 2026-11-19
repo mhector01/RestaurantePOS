@@ -240,6 +240,8 @@ export interface InvoiceIssuer {
 }
 
 export interface InvoiceView extends InvoiceTotals {
+  /** Propina voluntaria aceptada por el cliente (fuera de los importes y del ISV). */
+  tip?: number;
   id: number;
   number: string;
   customerName: string;

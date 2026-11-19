@@ -15,6 +15,7 @@ import { normalizeRtn } from "@/lib/fiscal";
 import type { OrderLine } from "./OrderWorkspace";
 import { DiscountPanel, previewDiscount, type PaidLine } from "./DiscountPanel";
 import type { DiscountInput, DiscountRules } from "@/lib/discounts";
+import { computeTip, type TipInput, type TipRules } from "@/lib/tips";
 import { callAction } from "@/lib/client-action";
 
 type Mode = "full" | "split";
@@ -32,9 +33,12 @@ interface Props {
   invoicing?: boolean;
   /** Límite de descuento sin autorización y % de tercera edad del restaurante. */
   discountRules: DiscountRules;
+  /** Propina sugerida del restaurante. */
+  tipRules: TipRules;
 }
 
 type Paid = TicketPayment & { remainingItems: number; invoiceWarning?: string };
+type TipChoice = "none" | "suggested" | "other";
 
 /** Sugerencias de billetes para el efectivo recibido. */
 function cashSuggestions(total: number) {
@@ -58,6 +62,7 @@ export function CheckoutDialog({
   takeout = false,
   invoicing = false,
   discountRules,
+  tipRules,
 }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -67,6 +72,9 @@ export function CheckoutDialog({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Paid | null>(null);
   const [discount, setDiscount] = useState<DiscountInput | null>(null);
+  // La propina siempre empieza en "No": solo se cobra si el cliente la acepta
+  const [tipChoice, setTipChoice] = useState<TipChoice>("none");
+  const [tipOther, setTipOther] = useState("");
   const [withRtn, setWithRtn] = useState(false);
   const [rtn, setRtn] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -87,6 +95,8 @@ export function CheckoutDialog({
       setRtn("");
       setCustomerName("");
       setDiscount(null);
+      setTipChoice("none");
+      setTipOther("");
     }
   }
 
@@ -99,7 +109,16 @@ export function CheckoutDialog({
     .filter((l) => l.total > 0);
   const preview = previewDiscount(paidLines, discount, discountRules);
   const discountAmount = preview && !preview.error ? preview.total : 0;
-  const total = Math.round((gross - discountAmount) * 100) / 100;
+  const consumption = Math.round((gross - discountAmount) * 100) / 100;
+  const tipInput: TipInput | null =
+    !tipRules.enabled || tipChoice === "none"
+      ? null
+      : tipChoice === "suggested"
+        ? { percent: tipRules.percent }
+        : { amount: parseFloat(tipOther) || 0 };
+  const tip = computeTip(consumption, tipInput);
+  // Lo que paga el cliente: consumo (facturado) + propina voluntaria (aparte)
+  const total = Math.round((consumption + tip) * 100) / 100;
   const discountBlocked =
     !!discount && (!!preview?.error || (preview?.needsPin && (discount.managerPin ?? "").length !== 4));
 
@@ -123,7 +142,7 @@ export function CheckoutDialog({
     try {
       const res = await callAction(() =>
         mode === "full"
-          ? processFullPayment(orderId, mesaId, method, customer, discount)
+          ? processFullPayment(orderId, mesaId, method, customer, discount, tipInput)
           : processProductPayment(
               orderId,
               mesaId,
@@ -132,7 +151,8 @@ export function CheckoutDialog({
                 .map(([id, q]) => ({ id: Number(id), quantity: q })),
               method,
               customer,
-              discount
+              discount,
+              tipInput
             )
       );
       if ("error" in res && res.error) {
@@ -177,7 +197,8 @@ export function CheckoutDialog({
             </span>
             <DialogTitle className="text-xl">Pago registrado</DialogTitle>
             <DialogDescription className="mt-1">
-              {formatMoney(result.amount)} · {PAYMENT_LABEL[result.method] ?? result.method}
+              {formatMoney(result.amount)}
+              {(result.tip ?? 0) > 0 && ` + propina ${formatMoney(result.tip ?? 0)}`} · {PAYMENT_LABEL[result.method] ?? result.method}
             </DialogDescription>
             {result.invoice && (
               <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-sm font-medium tabular">
@@ -299,6 +320,54 @@ export function CheckoutDialog({
                 <DiscountPanel lines={paidLines} rules={discountRules} value={discount} onChange={setDiscount} />
               )}
 
+              {/* Propina voluntaria */}
+              {tipRules.enabled && consumption > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">
+                    ¿El cliente deja propina? <span className="text-muted-foreground font-normal">(voluntaria)</span>
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { id: "none", label: "No" },
+                        { id: "suggested", label: `Sí, ${tipRules.percent}%` },
+                        { id: "other", label: "Otro monto" },
+                      ] as const
+                    ).map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => setTipChoice(o.id)}
+                        className={cn(
+                          "h-11 rounded-xl border-2 text-sm font-medium transition-all",
+                          tipChoice === o.id ? "border-primary bg-accent text-accent-foreground" : "hover:bg-muted"
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                  {tipChoice === "suggested" && (
+                    <p className="text-xs text-muted-foreground tabular">
+                      {tipRules.percent}% de {formatMoney(consumption)} = {formatMoney(tip)}
+                    </p>
+                  )}
+                  {tipChoice === "other" && (
+                    <input
+                      inputMode="decimal"
+                      value={tipOther}
+                      onChange={(e) => setTipOther(e.target.value.replace(/[^\d.]/g, ""))}
+                      placeholder="Monto de la propina"
+                      aria-label="Monto de la propina"
+                      className="w-full h-11 rounded-xl border bg-card px-3 tabular outline-none focus:border-primary"
+                    />
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    No lleva ISV. En la factura sale aparte, debajo del total.
+                  </p>
+                </div>
+              )}
+
               {/* Método de pago */}
               <div className="space-y-2">
                 <p className="text-sm font-medium">Método de pago</p>
@@ -409,6 +478,11 @@ export function CheckoutDialog({
                 {discountAmount > 0 && (
                   <p className="text-xs text-muted-foreground tabular">
                     <span className="line-through">{formatMoney(gross)}</span> · descuento −{formatMoney(discountAmount)}
+                  </p>
+                )}
+                {tip > 0 && (
+                  <p className="text-xs text-muted-foreground tabular">
+                    Consumo {formatMoney(consumption)} + propina {formatMoney(tip)}
                   </p>
                 )}
                 <p className="text-2xl font-semibold tabular">{formatMoney(total)}</p>

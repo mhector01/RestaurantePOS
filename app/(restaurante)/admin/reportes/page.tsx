@@ -1,6 +1,6 @@
 import { formatMoney } from "@/lib/config";
 import { delta, resolvePeriod } from "@/lib/period";
-import { discountSummary, salesSummary } from "@/lib/reports";
+import { discountSummary, salesSummary, tipSummary } from "@/lib/reports";
 import { DISCOUNT_KIND_LABEL, formatDni, type DiscountKind } from "@/lib/discounts";
 import { Panel, ReportHeader, StatTile } from "@/components/reports/Blocks";
 import { BarList, ColumnChart, SegmentedBar } from "@/components/reports/Charts";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function VentasReportPage({ searchParams }: { searchParams: Promise<{ p?: string; desde?: string; hasta?: string }> }) {
   const period = resolvePeriod(await searchParams);
-  const [s, disc] = await Promise.all([salesSummary(period), discountSummary(period)]);
+  const [s, disc, tips] = await Promise.all([salesSummary(period), discountSummary(period), tipSummary(period)]);
   const evoTitle = period.bucket === "hour" ? "Ventas por hora" : period.bucket === "day" ? "Ventas por día" : "Ventas por mes";
   const bestHour = s.hours.reduce((b, h) => (h.value > (b?.value ?? 0) ? h : b), s.hours[0]);
   const bestDay = s.weekdays.reduce((b, d) => (d.value > b.value ? d : b), s.weekdays[0]);
@@ -108,6 +108,26 @@ export default async function VentasReportPage({ searchParams }: { searchParams:
                 </ul>
               </div>
             </div>
+          )}
+        </Panel>
+
+        <Panel
+          title="Propinas"
+          description={
+            tips.count
+              ? `${formatMoney(tips.total)} en ${tips.count} cobro${tips.count === 1 ? "" : "s"} · efectivo ${formatMoney(tips.cash)} · tarjeta ${formatMoney(tips.card)}. No son venta ni llevan ISV.`
+              : "Ningún cliente dejó propina en este periodo."
+          }
+        >
+          {tips.count > 0 && (
+            <BarList
+              rows={tips.byWaiter.map((w) => ({
+                label: w.name,
+                value: w.amount,
+                extra: `${w.count} cuenta${w.count === 1 ? "" : "s"} · ${w.sales > 0 ? Math.round((w.amount / w.sales) * 1000) / 10 : 0}% de lo cobrado`,
+              }))}
+              color="var(--series-3)"
+            />
           )}
         </Panel>
 

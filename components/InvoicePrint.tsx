@@ -104,6 +104,19 @@ export function InvoiceBody({
         </div>
       </div>
       <p className="mb-1">Son: {amountInWords(invoice.total)}</p>
+      {(invoice.tip ?? 0) > 0 && (
+        <div className="mb-2 pt-1 border-t border-dashed border-black space-y-0.5">
+          <div className="flex justify-between">
+            <span>Propina voluntaria (aceptada por el cliente)</span>
+            <span className="whitespace-nowrap">{formatMoney(invoice.tip ?? 0)}</span>
+          </div>
+          <div className="flex justify-between font-bold">
+            <span>TOTAL A PAGAR</span>
+            <span>{formatMoney(invoice.total + (invoice.tip ?? 0))}</span>
+          </div>
+          <p className="text-[9px]">La propina no forma parte de los importes facturados ni causa ISV.</p>
+        </div>
+      )}
       <p>Pago: {PAYMENT_LABEL[invoice.method] ?? invoice.method}</p>
       {received !== undefined && received > 0 && (
         <>

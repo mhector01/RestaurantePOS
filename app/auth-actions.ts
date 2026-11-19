@@ -260,6 +260,16 @@ export async function saveDiscountSettings(input: { limit: number; seniorPercent
   return { success: true };
 }
 
+/** Propina sugerida: activar o no, y el % que sale en la pre-cuenta y al cobrar. */
+export async function saveTipSettings(input: { enabled: boolean; percent: number }): Promise<Result> {
+  await requireAdmin("OWNER");
+  const percent = Math.floor(Number(input.percent));
+  if (!(percent >= 1 && percent <= 30)) return { success: false, error: "El % de propina va de 1 a 30" };
+  await rootPrisma.restaurant.update({ where: { id: await currentRestaurantId() }, data: { tipEnabled: !!input.enabled, tipPercent: percent } });
+  revalidatePath("/", "layout");
+  return { success: true };
+}
+
 /** Logo para recibos y facturas. Recibe la imagen ya reducida por el navegador. */
 export async function setRestaurantLogo(form: FormData): Promise<Result> {
   await requireAdmin("OWNER");

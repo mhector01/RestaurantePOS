@@ -1,6 +1,7 @@
 import { getBusiness, getRestaurant } from "@/lib/tenant";
 import prisma from "@/lib/prisma";
 import { DiscountSettings } from "@/components/settings/DiscountSettings";
+import { TipSettings } from "@/components/settings/TipSettings";
 import { requireAdmin } from "@/lib/session";
 import { BusinessForm } from "@/components/settings/BusinessForm";
 import { LogoUploader } from "@/components/settings/LogoUploader";
@@ -17,6 +18,7 @@ export default async function NegocioPage() {
       <LogoUploader logo={logo} name={business.name} />
       <BusinessForm initial={business} />
       <DiscountSettings limit={restaurant?.discountLimit ?? 10} seniorPercent={restaurant?.seniorPercent ?? 25} managers={managers} />
+      <TipSettings enabled={restaurant?.tipEnabled ?? true} percent={restaurant?.tipPercent ?? 10} />
     </>
   );
 }

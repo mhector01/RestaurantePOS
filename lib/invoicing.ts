@@ -145,6 +145,8 @@ export async function issueInvoice(input: {
   replaces?: number; // id de la factura anulada a la que reemplaza
   /** Descuento sin ISV ("Descuentos y rebajas otorgados"); las líneas ya traen el renglón negativo. */
   discountNet?: number;
+  /** Propina voluntaria aceptada: se guarda con la factura e imprime aparte, fuera de los importes. */
+  tip?: number;
 }): Promise<{ invoice: InvoiceView | null; warning?: string }> {
   const settings = await getFiscalSettings();
   if (!settings.enabled) return { invoice: null };
@@ -198,6 +200,7 @@ export async function issueInvoice(input: {
           isv15: totals.isv15,
           isv18: totals.isv18,
           discount: totals.discount,
+          tip: Math.round((input.tip ?? 0) * 100) / 100,
           total: totals.total,
           method: input.method,
           lines: input.lines as unknown as Prisma.InputJsonValue,
@@ -231,6 +234,7 @@ export function toInvoiceView(i: {
   isv15: number;
   isv18: number;
   discount: number;
+  tip: number;
   total: number;
   method: string;
   lines: Prisma.JsonValue;
@@ -250,6 +254,7 @@ export function toInvoiceView(i: {
     isv15: i.isv15,
     isv18: i.isv18,
     discount: i.discount,
+    tip: i.tip,
     // Sub-total antes del descuento (sin ISV); los importes gravados ya vienen con el descuento aplicado
     subtotal: Math.round((i.taxable15 + i.taxable18 + i.exempt + i.exonerated + i.discount) * 100) / 100,
     total: i.total,
