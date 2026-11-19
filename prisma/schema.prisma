@@ -11,23 +11,26 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Restaurant {
-  id          Int       @id @default(autoincrement())
-  slug        String    @unique // Subdominio: <slug>.tudominio.com
-  name        String    @default("") // Vacío = se usa NEXT_PUBLIC_BUSINESS_NAME
-  address     String    @default("")
-  taxId       String    @default("") // RTN que se imprime en el ticket
-  phone       String    @default("") // Teléfono que se imprime en el ticket
-  logo        String? // Logo para recibos y facturas (archivo en el almacenamiento de fotos, ver lib/uploads.ts)
-  status      String    @default("ACTIVE") // ACTIVE o SUSPENDED
-  suspendedAt DateTime?
-  notes       String    @default("") // Notas internas de la plataforma (contacto, plan, acuerdos…); el restaurante no las ve
+  id            Int       @id @default(autoincrement())
+  slug          String    @unique // Subdominio: <slug>.tudominio.com
+  name          String    @default("") // Vacío = se usa NEXT_PUBLIC_BUSINESS_NAME
+  address       String    @default("")
+  taxId         String    @default("") // RTN que se imprime en el ticket
+  phone         String    @default("") // Teléfono que se imprime en el ticket
+  logo          String? // Logo para recibos y facturas (archivo en el almacenamiento de fotos, ver lib/uploads.ts)
+  // Descuentos: hasta qué % puede aplicar un mesero sin autorización, y % de ley para tercera edad / discapacidad
+  discountLimit Int       @default(10)
+  seniorPercent Int       @default(25)
+  status        String    @default("ACTIVE") // ACTIVE o SUSPENDED
+  suspendedAt   DateTime?
+  notes         String    @default("") // Notas internas de la plataforma (contacto, plan, acuerdos…); el restaurante no las ve
   // Suscripción: plan contratado y hasta cuándo está pagado (null = sin vencimiento)
-  planId      Int?
-  plan        Plan?     @relation(fields: [planId], references: [id])
-  paidUntil   DateTime?
-  source      String    @default("PLATAFORMA") // PLATAFORMA (lo creó el equipo) o REGISTRO (se registró solo)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  planId        Int?
+  plan          Plan?     @relation(fields: [planId], references: [id])
+  paidUntil     DateTime?
+  source        String    @default("PLATAFORMA") // PLATAFORMA (lo creó el equipo) o REGISTRO (se registró solo)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   areas                Area[]
   tables               Table[]
@@ -56,6 +59,7 @@ model Restaurant {
   subscriptionPayments SubscriptionPayment[]
   loginTickets         LoginTicket[]
   supportAccesses      SupportAccess[]
+  paymentDiscounts     PaymentDiscount[]
 }
 
 // Nuestras tablas
@@ -237,16 +241,18 @@ model KitchenItem {
 }
 
 model Payment {
-  id           Int        @id @default(autoincrement())
-  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  id           Int               @id @default(autoincrement())
+  restaurantId Int               @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant        @relation(fields: [restaurantId], references: [id])
   orderId      Int
-  order        Order      @relation(fields: [orderId], references: [id])
-  amount       Float // Monto para dividir cuenta
+  order        Order             @relation(fields: [orderId], references: [id])
+  amount       Float // Monto cobrado (ya con el descuento)
+  discount     Float             @default(0) // Descuento aplicado en este cobro (con ISV)
   method       String // CASH, CARD, etc.
   invoices     Invoice[]
   saleLines    SaleLine[]
-  createdAt    DateTime   @default(now())
+  discounts    PaymentDiscount[]
+  createdAt    DateTime          @default(now())
 
   @@index([restaurantId])
 }
@@ -475,6 +481,7 @@ model SaleLine {
   net          Float // Sin ISV
   tax          Float // ISV
   cost         Float      @default(0) // Costo de insumos según receta al momento de vender
+  discount     Float      @default(0) // Parte del descuento del cobro que le tocó a esta línea (con ISV)
   waiterName   String?
   channel      String // MESA o LLEVAR
   createdAt    DateTime   @default(now())
@@ -630,4 +637,31 @@ model SupportAccess {
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// DESCUENTOS: cada descuento aplicado al cobrar, con quién lo aplicó y quién lo autorizó
+// ---------------------------------------------------------------------------
+
+model PaymentDiscount {
+  id              Int        @id @default(autoincrement())
+  restaurantId    Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant      Restaurant @relation(fields: [restaurantId], references: [id])
+  paymentId       Int
+  payment         Payment    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  kind            String // PERCENT, AMOUNT, COURTESY (cortesía), SENIOR (tercera edad / discapacidad)
+  scope           String // ORDER (toda la cuenta) o ITEM (un producto)
+  percent         Float? // % aplicado (PERCENT y SENIOR)
+  amount          Float // Monto descontado, con ISV
+  label           String // Texto que sale en el ticket y la factura
+  reason          String     @default("")
+  items           String     @default("") // Productos a los que se aplicó (texto)
+  beneficiaryName String? // Tercera edad / discapacidad
+  beneficiaryId   String? // Número de identidad (13 dígitos)
+  appliedBy       String? // Mesero que cobró
+  authorizedBy    String? // Encargado que autorizó con su PIN
+  createdAt       DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
+  @@index([paymentId])
 }

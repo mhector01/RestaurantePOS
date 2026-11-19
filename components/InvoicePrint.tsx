@@ -90,8 +90,8 @@ export function InvoiceBody({
       </table>
 
       <div className="space-y-0.5 border-b border-dashed border-black pb-2 mb-2">
-        {row("Descuentos y rebajas", invoice.discount)}
         {row("Sub-total", invoice.subtotal)}
+        {row("Descuentos y rebajas otorgados", invoice.discount)}
         {row("Importe exonerado", invoice.exonerated)}
         {row("Importe exento", invoice.exempt)}
         {row("Importe gravado 15%", invoice.taxable15)}

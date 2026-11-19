@@ -1,5 +1,6 @@
 "use client";
 
+import type { DiscountRules } from "@/lib/discounts";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -73,6 +74,8 @@ interface Props {
   soldOut?: number[];
   /** Facturación con CAI activa. */
   invoicing?: boolean;
+  /** Límite de descuento sin autorización y % de tercera edad. */
+  discountRules?: DiscountRules;
 }
 
 type OptimisticAction =
@@ -116,6 +119,7 @@ export function OrderWorkspace({
   closed,
   soldOut = [],
   invoicing = false,
+  discountRules = { limit: 10, seniorPercent: 25 },
 }: Props) {
   const soldOutSet = useMemo(() => new Set(soldOut), [soldOut]);
   const router = useRouter();
@@ -410,6 +414,7 @@ export function OrderWorkspace({
 
   const checkoutDialog = checkoutOrderId && (
     <CheckoutDialog
+      discountRules={discountRules}
       invoicing={invoicing}
       open={checkout.open}
       onOpenChange={(v) => setCheckout((c) => ({ ...c, open: v }))}

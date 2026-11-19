@@ -248,6 +248,18 @@ export async function saveBusiness(input: BusinessInput): Promise<Result> {
   return { success: true };
 }
 
+/** Reglas de descuentos: % que el mesero aplica sin autorización y % de ley para tercera edad. */
+export async function saveDiscountSettings(input: { limit: number; seniorPercent: number }): Promise<Result> {
+  await requireAdmin("OWNER");
+  const limit = Math.floor(Number(input.limit));
+  const senior = Math.floor(Number(input.seniorPercent));
+  if (!(limit >= 0 && limit <= 100)) return { success: false, error: "El límite va de 0 a 100%" };
+  if (!(senior >= 1 && senior <= 100)) return { success: false, error: "El % de tercera edad va de 1 a 100" };
+  await rootPrisma.restaurant.update({ where: { id: await currentRestaurantId() }, data: { discountLimit: limit, seniorPercent: senior } });
+  revalidatePath("/", "layout");
+  return { success: true };
+}
+
 /** Logo para recibos y facturas. Recibe la imagen ya reducida por el navegador. */
 export async function setRestaurantLogo(form: FormData): Promise<Result> {
   await requireAdmin("OWNER");

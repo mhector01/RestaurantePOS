@@ -13,6 +13,9 @@ import { PAYMENT_LABEL, formatMoney } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { normalizeRtn } from "@/lib/fiscal";
 import type { OrderLine } from "./OrderWorkspace";
+import { DiscountPanel, previewDiscount, type PaidLine } from "./DiscountPanel";
+import type { DiscountInput, DiscountRules } from "@/lib/discounts";
+import { callAction } from "@/lib/client-action";
 
 type Mode = "full" | "split";
 type Method = "CASH" | "CARD";
@@ -27,7 +30,11 @@ interface Props {
   takeout?: boolean;
   /** Facturación con CAI activa: se pide (opcional) el RTN del cliente. */
   invoicing?: boolean;
+  /** Límite de descuento sin autorización y % de tercera edad del restaurante. */
+  discountRules: DiscountRules;
 }
+
+type Paid = TicketPayment & { remainingItems: number; invoiceWarning?: string };
 
 /** Sugerencias de billetes para el efectivo recibido. */
 function cashSuggestions(total: number) {
@@ -50,6 +57,7 @@ export function CheckoutDialog({
   items,
   takeout = false,
   invoicing = false,
+  discountRules,
 }: Props) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -57,7 +65,8 @@ export function CheckoutDialog({
   const [qty, setQty] = useState<Record<number, number>>({});
   const [received, setReceived] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<(TicketPayment & { remainingItems: number; invoiceWarning?: string }) | null>(null);
+  const [result, setResult] = useState<Paid | null>(null);
+  const [discount, setDiscount] = useState<DiscountInput | null>(null);
   const [withRtn, setWithRtn] = useState(false);
   const [rtn, setRtn] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -77,12 +86,22 @@ export function CheckoutDialog({
       setWithRtn(false);
       setRtn("");
       setCustomerName("");
+      setDiscount(null);
     }
   }
 
   const fullTotal = useMemo(() => items.reduce((s, i) => s + i.price * i.quantity, 0), [items]);
   const splitTotal = items.reduce((s, i) => s + i.price * (qty[i.id] ?? 0), 0);
-  const total = mode === "full" ? fullTotal : splitTotal;
+  const gross = mode === "full" ? fullTotal : splitTotal;
+  // Lo que se cobra en este pago (para repartir el descuento como lo hará el servidor)
+  const paidLines: PaidLine[] = items
+    .map((i) => ({ key: i.id, name: i.name, total: Math.round(i.price * (mode === "full" ? i.quantity : (qty[i.id] ?? 0)) * 100) / 100 }))
+    .filter((l) => l.total > 0);
+  const preview = previewDiscount(paidLines, discount, discountRules);
+  const discountAmount = preview && !preview.error ? preview.total : 0;
+  const total = Math.round((gross - discountAmount) * 100) / 100;
+  const discountBlocked =
+    !!discount && (!!preview?.error || (preview?.needsPin && (discount.managerPin ?? "").length !== 4));
 
   const receivedNum = parseFloat(received) || 0;
   const change = method === "CASH" && receivedNum > 0 ? receivedNum - total : 0;
@@ -95,26 +114,33 @@ export function CheckoutDialog({
   const missingName = withRtn && normalizeRtn(rtn) !== null && !customerName.trim();
 
   const pay = async () => {
-    if (total <= 0) return;
+    if (gross <= 0) return;
+    if (discountBlocked) return toast.error(preview?.error ?? "Falta el PIN del encargado para el descuento");
     if (withRtn && (rtnInvalid || !normalizeRtn(rtn))) return toast.error("El RTN debe tener 14 dígitos");
     if (missingName) return toast.error("Escribe el nombre o razón social del cliente");
     const customer = withRtn ? { rtn, name: customerName } : undefined;
     setLoading(true);
     try {
-      const res =
+      const res = await callAction(() =>
         mode === "full"
-          ? await processFullPayment(orderId, mesaId, method, customer)
-          : await processProductPayment(
+          ? processFullPayment(orderId, mesaId, method, customer, discount)
+          : processProductPayment(
               orderId,
               mesaId,
               Object.entries(qty)
                 .filter(([, q]) => q > 0)
                 .map(([id, q]) => ({ id: Number(id), quantity: q })),
               method,
-              customer
-            );
-      if (!res) throw new Error("sin resultado");
-      setResult(res as unknown as TicketPayment & { remainingItems: number; invoiceWarning?: string });
+              customer,
+              discount
+            )
+      );
+      if ("error" in res && res.error) {
+        toast.error(res.error);
+        return;
+      }
+      if (!("id" in res)) throw new Error("sin resultado");
+      setResult(res as unknown as Paid);
       if (res.invoiceWarning) toast.warning(res.invoiceWarning, { duration: 8000 });
       setPaidInfo({ received: receivedNum, change: Math.max(0, change) });
     } catch (e) {
@@ -268,6 +294,11 @@ export function CheckoutDialog({
                 </div>
               )}
 
+              {/* Descuento */}
+              {paidLines.length > 0 && (
+                <DiscountPanel lines={paidLines} rules={discountRules} value={discount} onChange={setDiscount} />
+              )}
+
               {/* Método de pago */}
               <div className="space-y-2">
                 <p className="text-sm font-medium">Método de pago</p>
@@ -375,11 +406,16 @@ export function CheckoutDialog({
             <div className="border-t p-4 sm:p-5 flex items-center gap-4 bg-muted/40">
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground">Total a cobrar</p>
+                {discountAmount > 0 && (
+                  <p className="text-xs text-muted-foreground tabular">
+                    <span className="line-through">{formatMoney(gross)}</span> · descuento −{formatMoney(discountAmount)}
+                  </p>
+                )}
                 <p className="text-2xl font-semibold tabular">{formatMoney(total)}</p>
               </div>
               <Button
                 className="h-12 px-6 rounded-xl text-base"
-                disabled={loading || total <= 0 || insufficient}
+                disabled={loading || gross <= 0 || insufficient || discountBlocked}
                 onClick={pay}
               >
                 {loading && <Loader2 className="animate-spin" />}

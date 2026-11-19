@@ -1,6 +1,7 @@
 import { formatMoney } from "@/lib/config";
 import { delta, resolvePeriod } from "@/lib/period";
-import { salesSummary } from "@/lib/reports";
+import { discountSummary, salesSummary } from "@/lib/reports";
+import { DISCOUNT_KIND_LABEL, formatDni, type DiscountKind } from "@/lib/discounts";
 import { Panel, ReportHeader, StatTile } from "@/components/reports/Blocks";
 import { BarList, ColumnChart, SegmentedBar } from "@/components/reports/Charts";
 
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function VentasReportPage({ searchParams }: { searchParams: Promise<{ p?: string; desde?: string; hasta?: string }> }) {
   const period = resolvePeriod(await searchParams);
-  const s = await salesSummary(period);
+  const [s, disc] = await Promise.all([salesSummary(period), discountSummary(period)]);
   const evoTitle = period.bucket === "hour" ? "Ventas por hora" : period.bucket === "day" ? "Ventas por día" : "Ventas por mes";
   const bestHour = s.hours.reduce((b, h) => (h.value > (b?.value ?? 0) ? h : b), s.hours[0]);
   const bestDay = s.weekdays.reduce((b, d) => (d.value > b.value ? d : b), s.weekdays[0]);
@@ -62,6 +63,53 @@ export default async function VentasReportPage({ searchParams }: { searchParams:
             />
           </Panel>
         </div>
+
+        <Panel
+          title="Descuentos y cortesías"
+          description={
+            disc.count
+              ? `${formatMoney(disc.total)} en ${disc.count} cobro${disc.count === 1 ? "" : "s"}: lo que se dejó de cobrar en el periodo.`
+              : "No se otorgaron descuentos en este periodo."
+          }
+        >
+          {disc.count > 0 && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="space-y-5">
+                <BarList
+                  rows={disc.byKind.map((k) => ({
+                    label: k.kind === "PERCENT" || k.kind === "AMOUNT" ? (k.kind === "PERCENT" ? "Descuento %" : "Descuento por monto") : DISCOUNT_KIND_LABEL[k.kind as DiscountKind] ?? k.kind,
+                    value: k.amount,
+                    extra: `${k.count} ${k.count === 1 ? "vez" : "veces"}`,
+                  }))}
+                  color="var(--series-2)"
+                />
+                <div>
+                  <p className="text-sm font-medium mb-2">Quién los aplicó o autorizó</p>
+                  <BarList rows={disc.byPerson.map((p) => ({ label: p.name, value: p.amount, extra: `${p.count} ${p.count === 1 ? "vez" : "veces"}` }))} color="var(--series-5)" />
+                </div>
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-2">Últimos descuentos</p>
+                <ul className="divide-y rounded-xl border text-sm">
+                  {disc.recent.map((d) => (
+                    <li key={d.id} className="px-3 py-2 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate">{d.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {d.createdAt.toLocaleString("es-HN", { dateStyle: "short", timeStyle: "short" })}
+                          {d.appliedBy && ` · ${d.appliedBy}`}
+                          {d.authorizedBy && ` · autorizó ${d.authorizedBy}`}
+                          {d.beneficiaryId && ` · Id. ${formatDni(d.beneficiaryId)}`}
+                        </p>
+                      </div>
+                      <span className="tabular font-medium whitespace-nowrap">−{formatMoney(d.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </Panel>
 
         <Panel title="Ventas por mesero" description="Lo que vendió cada uno y su ticket promedio.">
           <BarList

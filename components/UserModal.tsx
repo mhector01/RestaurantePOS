@@ -13,6 +13,7 @@ interface User {
   id: number;
   name: string;
   pin: string;
+  role?: string;
 }
 
 export function UserModal({ user }: { user?: User }) {
@@ -20,12 +21,13 @@ export function UserModal({ user }: { user?: User }) {
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");
   const [pin, setPin] = useState("");
+  const [manager, setManager] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (pin.length !== 4) return toast.error("El PIN debe tener 4 números");
     setLoading(true);
-    const res = await saveUser(user?.id ?? null, name, pin);
+    const res = await saveUser(user?.id ?? null, name, pin, manager);
     setLoading(false);
     if (!res.success) return toast.error(res.error);
     toast.success(user ? "Datos actualizados" : "Persona registrada");
@@ -41,6 +43,7 @@ export function UserModal({ user }: { user?: User }) {
         if (v) {
           setName(user?.name ?? "");
           setPin(user?.pin ?? "");
+          setManager(user?.role === "ADMIN");
         }
         setOpen(v);
       }}
@@ -94,6 +97,20 @@ export function UserModal({ user }: { user?: User }) {
               className="h-14 rounded-xl text-center text-2xl font-semibold tracking-[0.6em] tabular"
             />
           </div>
+          <label className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={manager}
+              onChange={(e) => setManager(e.target.checked)}
+              className="mt-0.5 size-5 accent-[var(--primary)]"
+            />
+            <span>
+              <span className="block text-sm font-medium">Encargado</span>
+              <span className="block text-xs text-muted-foreground">
+                Con su PIN autoriza descuentos mayores al límite y cortesías al cobrar.
+              </span>
+            </span>
+          </label>
           <Button type="submit" className="w-full h-12 rounded-xl text-base" disabled={loading}>
             {loading && <Loader2 className="animate-spin" />}
             Guardar

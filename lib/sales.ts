@@ -32,7 +32,8 @@ export async function recordSales(input: {
   paymentId: number;
   orderId: number;
   items: SoldItem[];
-  lines: InvoiceLine[]; // mismas posiciones que items (de buildInvoiceLines)
+  lines: InvoiceLine[]; // mismas posiciones que items (de buildInvoiceLines), ya con el descuento aplicado
+  discounts?: number[]; // descuento (con ISV) de cada línea, mismas posiciones
 }) {
   try {
     const order = await prisma.order.findUnique({
@@ -71,6 +72,7 @@ export async function recordSales(input: {
           net,
           tax: round2(line.total - net),
           cost: round2(unitCost * item.quantity),
+          discount: round2(input.discounts?.[idx] ?? 0),
           waiterName: order?.user?.name ?? null,
           channel: order?.table.number === 0 ? "LLEVAR" : "MESA",
         };

@@ -15,6 +15,9 @@ import { expandSoldLines, loadCombo, partsLabel, resolveCombo, type ComboSelecti
 import { buildInvoiceLines, issueInvoice, type SoldItem } from "@/lib/invoicing";
 import { normalizeRtn, normalizeTaxRate } from "@/lib/fiscal";
 import { recordSales } from "@/lib/sales";
+import { applyDiscountToLines } from "@/lib/fiscal";
+import { resolveDiscount, type ResolvedDiscount } from "@/lib/discount-server";
+import type { DiscountInput } from "@/lib/discounts";
 
 /** Las acciones del panel se pueden invocar directo por HTTP, así que validamos la sesión aquí también. */
 /** Cookie "Secure" solo si la petición llegó por HTTPS (detrás del proxy de Coolify se ve en x-forwarded-proto). */
@@ -371,6 +374,128 @@ function cleanCustomer(customer: InvoiceCustomer) {
   return { rtn, name: name || undefined };
 }
 
+/** Línea de la cuenta que se cobra en este pago. */
+interface Charged {
+  itemId: number;
+  productId: number;
+  name: string;
+  quantity: number;
+  price: number;
+  parts: { productId: number; quantity: number; product: { name: string } }[];
+}
+
+/** Nombre del mesero de esta sesión (para saber quién aplicó un descuento). */
+async function currentWaiterName() {
+  const id = verifiedWaiterId((await cookies()).get(WAITER_COOKIE)?.value);
+  if (!id) return null;
+  return (await prisma.user.findUnique({ where: { id: Number(id) }, select: { name: true } }))?.name ?? null;
+}
+
+/**
+ * Cobra un pago (cuenta completa o una parte), con descuento opcional.
+ * Primero se calcula y se valida todo (incluido el PIN del encargado); solo si todo está bien
+ * se toca la cuenta, se registra el pago, se descuenta el inventario y se emite la factura.
+ */
+async function chargePayment(input: {
+  orderId: number;
+  mesaId: number;
+  method: string;
+  customer?: InvoiceCustomer;
+  discount?: DiscountInput | null;
+  charged: Charged[];
+  /** Aplica el cambio en la cuenta (borrar o reducir líneas). */
+  consume: () => Promise<void>;
+  /** Cuenta completa: las líneas se conservan en el pedido pagado y la mesa queda libre. */
+  full?: boolean;
+}) {
+  const invoiceCustomer = cleanCustomer(input.customer);
+  const soldItems: SoldItem[] = input.charged.map((c) => ({
+    productId: c.productId,
+    name: c.name,
+    quantity: c.quantity,
+    price: c.price,
+    detail: partsLabel(c.parts) || null,
+    parts: c.parts,
+  }));
+  const lines = await buildInvoiceLines(soldItems);
+
+  let resolved: ResolvedDiscount | null = null;
+  if (input.discount) {
+    const r = await resolveDiscount(
+      input.discount,
+      lines.map((l, i) => ({ key: input.charged[i].itemId, name: input.charged[i].name, total: l.total }))
+    );
+    if ("error" in r) return { error: r.error };
+    resolved = r;
+  }
+  const applied = resolved
+    ? applyDiscountToLines(lines, resolved.perLine, resolved.record.label)
+    : { discounted: lines, invoiceLines: lines, net: 0, gross: 0 };
+  const gross = lines.reduce((s, l) => s + l.total, 0);
+  const amount = Math.round((gross - applied.gross) * 100) / 100;
+
+  await input.consume();
+  const payment = await prisma.payment.create({
+    data: { orderId: input.orderId, amount, discount: applied.gross, method: input.method },
+    include: { order: { include: { table: true } } },
+  });
+  if (resolved) {
+    await prisma.paymentDiscount.create({
+      data: { paymentId: payment.id, ...resolved.record, appliedBy: await currentWaiterName() },
+    });
+  }
+
+  await consumeForSale(
+    input.orderId,
+    expandSoldLines(input.charged.map((c) => ({ productId: c.productId, quantity: c.quantity, parts: c.parts }))),
+    saleNote(payment.order)
+  );
+  await recordSales({
+    paymentId: payment.id,
+    orderId: input.orderId,
+    items: soldItems,
+    lines: applied.discounted,
+    discounts: resolved?.perLine,
+  });
+  // Tercera edad sin RTN: la factura sale a nombre del beneficiario
+  const customer =
+    invoiceCustomer ?? (resolved?.record.beneficiaryName ? { name: resolved.record.beneficiaryName } : undefined);
+  const { invoice, warning: invoiceWarning } = await issueInvoice({
+    paymentId: payment.id,
+    orderId: input.orderId,
+    method: input.method,
+    lines: applied.invoiceLines,
+    customer,
+    discountNet: applied.net,
+  });
+
+  const remainingItems = input.full ? 0 : await prisma.orderItem.count({ where: { orderId: input.orderId } });
+  if (remainingItems === 0) {
+    await prisma.order.update({ where: { id: input.orderId }, data: { status: "PAID" } });
+    await prisma.table.update({ where: { id: input.mesaId }, data: { status: "FREE" } });
+  }
+  refreshTable(input.mesaId);
+  revalidatePath("/admin", "layout");
+
+  return {
+    ...payment,
+    order: {
+      ...payment.order,
+      items: input.charged.map((c, i) => ({
+        id: c.itemId,
+        quantity: c.quantity,
+        price: c.price,
+        product: { name: c.name },
+        detail: soldItems[i].detail,
+      })),
+    },
+    discountInfo: resolved ? { label: resolved.record.label, amount: applied.gross, subtotal: gross } : null,
+    remainingItems,
+    invoice,
+    invoiceWarning,
+  };
+}
+
 /**
  * Cobra solo las unidades seleccionadas (cuenta dividida).
  */
@@ -379,142 +504,80 @@ export async function processProductPayment(
   mesaId: number,
   itemsToPay: { id: number; quantity: number }[],
   method: string,
-  customer?: InvoiceCustomer
+  customer?: InvoiceCustomer,
+  discount?: DiscountInput | null
 ) {
-  const invoiceCustomer = cleanCustomer(customer);
-  const soldItems: SoldItem[] = [];
-  let totalAmountToPay = 0;
-  const ticketItems = [];
-  const soldLines: { productId: number; quantity: number; parts?: { productId: number; quantity: number }[] }[] = [];
-
-  for (const itemRequest of itemsToPay) {
-    const originalItem = await prisma.orderItem.findUnique({
-      where: { id: itemRequest.id },
+  const charged: (Charged & { remaining: number })[] = [];
+  for (const req of itemsToPay) {
+    if (req.quantity <= 0) continue;
+    const item = await prisma.orderItem.findUnique({
+      where: { id: req.id },
       include: { product: true, parts: { include: { product: true } } },
     });
-    if (!originalItem || itemRequest.quantity <= 0) continue;
-
-    const qty = Math.min(itemRequest.quantity, originalItem.quantity);
-    totalAmountToPay += originalItem.price * qty;
-
-    soldLines.push({ productId: originalItem.productId, quantity: qty, parts: originalItem.parts });
-    soldItems.push({
-      productId: originalItem.productId,
-      name: originalItem.product.name,
+    if (!item || item.orderId !== orderId) continue;
+    const qty = Math.min(req.quantity, item.quantity);
+    charged.push({
+      itemId: item.id,
+      productId: item.productId,
+      name: item.product.name,
       quantity: qty,
-      price: originalItem.price,
-      detail: partsLabel(originalItem.parts) || null,
-      parts: originalItem.parts,
+      price: item.price,
+      parts: item.parts,
+      remaining: item.quantity - qty,
     });
-    ticketItems.push({
-      id: originalItem.id,
-      quantity: qty,
-      price: originalItem.price,
-      product: { name: originalItem.product.name },
-      detail: partsLabel(originalItem.parts) || null,
-    });
-
-    if (originalItem.quantity <= qty) {
-      await prisma.orderItem.delete({ where: { id: originalItem.id } });
-    } else {
-      await prisma.orderItem.update({
-        where: { id: originalItem.id },
-        data: { quantity: originalItem.quantity - qty },
-      });
-    }
   }
+  if (charged.length === 0) return { error: "Selecciona lo que se va a cobrar" };
 
-  const newPayment = await prisma.payment.create({
-    data: { orderId, amount: totalAmountToPay, method },
-    include: { order: { include: { table: true } } },
-  });
-
-  await consumeForSale(orderId, expandSoldLines(soldLines), saleNote(newPayment.order));
-  const invoiceLines = await buildInvoiceLines(soldItems);
-  await recordSales({ paymentId: newPayment.id, orderId, items: soldItems, lines: invoiceLines });
-  const { invoice, warning: invoiceWarning } = await issueInvoice({
-    paymentId: newPayment.id,
+  return chargePayment({
     orderId,
+    mesaId,
     method,
-    lines: invoiceLines,
-    customer: invoiceCustomer,
+    customer,
+    discount,
+    charged,
+    consume: async () => {
+      for (const c of charged) {
+        if (c.remaining <= 0) await prisma.orderItem.delete({ where: { id: c.itemId } });
+        else await prisma.orderItem.update({ where: { id: c.itemId }, data: { quantity: c.remaining } });
+      }
+    },
   });
-  revalidatePath("/admin", "layout");
-
-  const remainingItems = await prisma.orderItem.count({ where: { orderId } });
-  if (remainingItems === 0) {
-    await prisma.order.update({ where: { id: orderId }, data: { status: "PAID" } });
-    await prisma.table.update({ where: { id: mesaId }, data: { status: "FREE" } });
-  }
-
-  refreshTable(mesaId);
-  return {
-    ...newPayment,
-    order: { ...newPayment.order, items: ticketItems },
-    remainingItems,
-    invoice,
-    invoiceWarning,
-  };
 }
 
 /**
  * Cobra todo lo pendiente de la cuenta y libera la mesa.
  */
-export async function processFullPayment(orderId: number, mesaId: number, method: string, customer?: InvoiceCustomer) {
-  const invoiceCustomer = cleanCustomer(customer);
+export async function processFullPayment(
+  orderId: number,
+  mesaId: number,
+  method: string,
+  customer?: InvoiceCustomer,
+  discount?: DiscountInput | null
+) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: { include: { product: true, parts: true } } },
+    include: { items: { include: { product: true, parts: { include: { product: true } } } } },
   });
-  if (!order || order.items.length === 0) return null;
+  if (!order || order.items.length === 0) return { error: "La cuenta no tiene productos por cobrar" };
 
-  const total = order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-  const payment = await prisma.payment.create({
-    data: { orderId, amount: total, method },
-    include: {
-      order: { include: { table: true, items: { include: { product: true, parts: { include: { product: true } } } } } },
-    },
-  });
-
-  await prisma.order.update({ where: { id: orderId }, data: { status: "PAID" } });
-  await prisma.table.update({ where: { id: mesaId }, data: { status: "FREE" } });
-  await consumeForSale(
+  return chargePayment({
     orderId,
-    expandSoldLines(order.items.map((i) => ({ productId: i.productId, quantity: i.quantity, parts: i.parts }))),
-    saleNote(payment.order)
-  );
-
-  const soldItems: SoldItem[] = payment.order.items.map((i) => ({
-    productId: i.productId,
-    name: i.product.name,
-    quantity: i.quantity,
-    price: i.price,
-    detail: partsLabel(i.parts) || null,
-    parts: i.parts,
-  }));
-  const invoiceLines = await buildInvoiceLines(soldItems);
-  await recordSales({ paymentId: payment.id, orderId, items: soldItems, lines: invoiceLines });
-  const { invoice, warning: invoiceWarning } = await issueInvoice({
-    paymentId: payment.id,
-    orderId,
+    mesaId,
     method,
-    lines: invoiceLines,
-    customer: invoiceCustomer,
+    customer,
+    discount,
+    charged: order.items.map((i) => ({
+      itemId: i.id,
+      productId: i.productId,
+      name: i.product.name,
+      quantity: i.quantity,
+      price: i.price,
+      parts: i.parts,
+    })),
+    // Al cobrar la cuenta completa las líneas se conservan (quedan en el pedido pagado)
+    consume: async () => {},
+    full: true,
   });
-
-  refreshTable(mesaId);
-  revalidatePath("/admin", "layout");
-  return {
-    ...payment,
-    order: {
-      ...payment.order,
-      items: payment.order.items.map((i) => ({ ...i, detail: partsLabel(i.parts) || null })),
-    },
-    remainingItems: 0,
-    invoice,
-    invoiceWarning,
-  };
 }
 
 export async function getPaymentTicket(paymentId: number) {
@@ -770,18 +833,21 @@ export async function enableCounter() {
 // PERSONAL (MESEROS)
 // ---------------------------------------------------------------------------
 
-export async function saveUser(id: number | null, name: string, pin: string) {
+/** Mesero o encargado. El encargado (rol ADMIN) autoriza descuentos y cortesías con su PIN. */
+export async function saveUser(id: number | null, name: string, pin: string, manager = false) {
   await requireAdmin();
+  if (!/^\d{4}$/.test(pin)) return { success: false, error: "El PIN debe tener 4 números" };
+  const role = manager ? "ADMIN" : "WAITER";
   const clash = await prisma.user.findFirst({ where: { pin } });
   if (clash && clash.id !== id) {
     return { success: false, error: "Ese PIN ya lo usa otra persona." };
   }
   if (id) {
-    await prisma.user.update({ where: { id }, data: { name: name.trim(), pin } });
+    await prisma.user.update({ where: { id }, data: { name: name.trim(), pin, role } });
   } else {
     const limit = await planLimitProblem("waiters");
     if (limit) return { success: false, error: limit };
-    await prisma.user.create({ data: { name: name.trim(), pin } });
+    await prisma.user.create({ data: { name: name.trim(), pin, role } });
   }
   revalidatePath("/admin/usuarios");
   return { success: true };

@@ -20,6 +20,8 @@ export interface TicketPayment {
   };
   /** Factura con CAI, si la facturación está activa. */
   invoice?: InvoiceView | null;
+  /** Descuento aplicado en este cobro. */
+  discountInfo?: { label: string; amount: number; subtotal: number } | null;
 }
 
 /**
@@ -91,6 +93,18 @@ export function TicketPrint({
         </tbody>
       </table>
 
+      {payment.discountInfo && (
+        <div className="space-y-0.5 mb-1">
+          <div className="flex justify-between">
+            <span>Subtotal</span>
+            <span>{formatMoney(payment.discountInfo.subtotal)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span>{payment.discountInfo.label}</span>
+            <span className="whitespace-nowrap">−{formatMoney(payment.discountInfo.amount)}</span>
+          </div>
+        </div>
+      )}
       <div className="flex justify-between font-bold text-sm">
         <span>TOTAL</span>
         <span>{formatMoney(payment.amount)}</span>

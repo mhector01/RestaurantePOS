@@ -143,11 +143,13 @@ export async function issueInvoice(input: {
   lines: InvoiceLine[];
   customer?: Customer;
   replaces?: number; // id de la factura anulada a la que reemplaza
+  /** Descuento sin ISV ("Descuentos y rebajas otorgados"); las líneas ya traen el renglón negativo. */
+  discountNet?: number;
 }): Promise<{ invoice: InvoiceView | null; warning?: string }> {
   const settings = await getFiscalSettings();
   if (!settings.enabled) return { invoice: null };
 
-  const totals = computeTotals(input.lines);
+  const totals = { ...computeTotals(input.lines), discount: Math.round((input.discountNet ?? 0) * 100) / 100 };
   const customerRtn = input.customer?.rtn || null;
   const customerName = (input.customer?.name || "").trim() || "Consumidor final";
 
@@ -248,7 +250,8 @@ export function toInvoiceView(i: {
     isv15: i.isv15,
     isv18: i.isv18,
     discount: i.discount,
-    subtotal: Math.round((i.taxable15 + i.taxable18 + i.exempt + i.exonerated) * 100) / 100,
+    // Sub-total antes del descuento (sin ISV); los importes gravados ya vienen con el descuento aplicado
+    subtotal: Math.round((i.taxable15 + i.taxable18 + i.exempt + i.exonerated + i.discount) * 100) / 100,
     total: i.total,
     method: i.method,
     lines: i.lines as unknown as InvoiceLine[],

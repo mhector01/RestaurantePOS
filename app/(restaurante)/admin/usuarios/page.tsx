@@ -43,14 +43,21 @@ export default async function UsuariosPage() {
                 {initials(u.name)}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{u.name}</p>
+                <p className="font-medium truncate">
+                  {u.name}
+                  {u.role === "ADMIN" && (
+                    <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 bg-primary/15 text-primary">
+                      Encargado
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {u._count.orders} cuenta{u._count.orders === 1 ? "" : "s"} atendida{u._count.orders === 1 ? "" : "s"}
                 </p>
               </div>
               <PinReveal pin={u.pin} />
               <div className="flex">
-                <UserModal user={{ id: u.id, name: u.name, pin: u.pin }} />
+                <UserModal user={{ id: u.id, name: u.name, pin: u.pin, role: u.role }} />
                 <ConfirmAction
                   title={`¿Eliminar a ${u.name}?`}
                   description="Ya no podrá entrar con su PIN. Si tiene ventas registradas no se podrá eliminar."

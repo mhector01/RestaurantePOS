@@ -284,3 +284,40 @@ export async function taxSummary(period: Period) {
     }, new Map<string, { total: number; tax: number; rtn: string }>())].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total),
   };
 }
+
+/** Descuentos otorgados en el periodo: total, por tipo, por quién lo autorizó o aplicó, y el detalle. */
+export async function discountSummary(period: Period) {
+  const rows = await prisma.paymentDiscount.findMany({
+    where: { createdAt: { gte: period.start, lt: period.end } },
+    orderBy: { createdAt: "desc" },
+  });
+  const total = round2(rows.reduce((s, d) => s + d.amount, 0));
+  const byKind = new Map<string, { count: number; amount: number }>();
+  const byPerson = new Map<string, { count: number; amount: number }>();
+  for (const d of rows) {
+    const k = byKind.get(d.kind) ?? { count: 0, amount: 0 };
+    k.count += 1;
+    k.amount += d.amount;
+    byKind.set(d.kind, k);
+    const who = d.authorizedBy ? `${d.authorizedBy} (autorizó)` : (d.appliedBy ?? "Sin mesero");
+    const p = byPerson.get(who) ?? { count: 0, amount: 0 };
+    p.count += 1;
+    p.amount += d.amount;
+    byPerson.set(who, p);
+  }
+  return {
+    total,
+    count: rows.length,
+    byKind: [...byKind.entries()].map(([kind, v]) => ({ kind, count: v.count, amount: round2(v.amount) })).sort((a, b) => b.amount - a.amount),
+    byPerson: [...byPerson.entries()].map(([name, v]) => ({ name, count: v.count, amount: round2(v.amount) })).sort((a, b) => b.amount - a.amount),
+    recent: rows.slice(0, 15).map((d) => ({
+      id: d.id,
+      label: d.label,
+      amount: d.amount,
+      appliedBy: d.appliedBy,
+      authorizedBy: d.authorizedBy,
+      beneficiaryId: d.beneficiaryId,
+      createdAt: d.createdAt,
+    })),
+  };
+}

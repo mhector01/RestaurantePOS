@@ -71,6 +71,54 @@ export function computeTotals(lines: InvoiceLine[]): InvoiceTotals {
   };
 }
 
+/** Monto con ISV de una línea, separado por tasa. */
+function grossByRate(line: InvoiceLine): Partial<Record<TaxRate, number>> {
+  if (line.split) return line.split;
+  return { [line.tax === "MIXTO" ? "15" : line.tax]: line.total };
+}
+
+/**
+ * Aplica un descuento (monto con ISV por línea) a lo cobrado:
+ *  - `discounted`: cada línea con su total ya rebajado (para los reportes de ventas);
+ *  - `invoiceLines`: las líneas originales más un renglón negativo con el descuento, repartido por tasa,
+ *    para que el ISV de la factura se calcule sobre el precio rebajado;
+ *  - `net`: el descuento sin ISV ("Descuentos y rebajas otorgados" de la factura).
+ */
+export function applyDiscountToLines(lines: InvoiceLine[], perLine: number[], label: string) {
+  const negative: Partial<Record<TaxRate, number>> = {};
+  const discounted = lines.map((line, i) => {
+    const d = Math.min(perLine[i] ?? 0, line.total);
+    if (d <= 0 || line.total <= 0) return line;
+    const factor = (line.total - d) / line.total;
+    const byRate = grossByRate(line);
+    let assigned = 0;
+    const entries = Object.entries(byRate) as [TaxRate, number][];
+    entries.forEach(([rate, amount], n) => {
+      const share = n === entries.length - 1 ? round2(d - assigned) : round2((d * amount) / line.total);
+      assigned = round2(assigned + share);
+      negative[rate] = round2((negative[rate] ?? 0) + share);
+    });
+    return {
+      ...line,
+      total: round2(line.total - d),
+      ...(line.split ? { split: Object.fromEntries(entries.map(([r, a]) => [r, round2(a * factor)])) } : {}),
+    };
+  });
+  const gross = round2(Object.values(negative).reduce((s, x) => s + (x ?? 0), 0));
+  if (gross <= 0) return { discounted: lines, invoiceLines: lines, net: 0, gross: 0 };
+  const rates = Object.keys(negative) as TaxRate[];
+  const discountLine: InvoiceLine = {
+    name: label,
+    quantity: 1,
+    unitPrice: -gross,
+    total: -gross,
+    tax: rates.length === 1 ? rates[0] : "MIXTO",
+    split: Object.fromEntries(rates.map((r) => [r, -(negative[r] ?? 0)])),
+  };
+  const net = round2(rates.reduce((s, r) => s + (negative[r] ?? 0) / (1 + RATE[r]), 0));
+  return { discounted, invoiceLines: [...lines, discountLine], net, gross };
+}
+
 /**
  * Reparte el precio de un combo entre sus componentes según el precio normal de cada uno,
  * para aplicar la tasa de ISV que corresponde a cada parte (ej. combo con cerveza).
