@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/session";
 import { UNITS } from "@/lib/inventory";
+import { normalizeTaxRate } from "@/lib/fiscal";
 
 type Result = { success: boolean; error?: string };
 
@@ -42,7 +43,53 @@ export interface IngredientInput {
   initialStock?: number; // solo al crear
 }
 
-export async function saveIngredient(id: number | null, input: IngredientInput): Promise<Result & { id?: number }> {
+/** Para vender el insumo tal cual en el menú (cerveza, gaseosa, agua…), creando su producto en el mismo paso. */
+export interface SellInput {
+  price: number;
+  categoryId: number | null;
+  newCategory?: string; // si no hay categoría todavía, se crea (sin ir a cocina: se sirve tal cual)
+  taxRate: string;
+}
+
+type Tx = Pick<typeof prisma, "product" | "recipeItem" | "category">;
+
+/** Productos de reventa de un insumo: los que llevan exactamente 1 unidad de él y nada más. */
+async function resaleProductsOf(tx: Tx, ingredientId: number) {
+  const products = await tx.product.findMany({
+    where: { isCombo: false, recipe: { some: { ingredientId, quantity: 1 } } },
+    include: { recipe: true },
+  });
+  return products.filter((p) => p.recipe.length === 1);
+}
+
+/** Crea el producto del menú para vender un insumo tal cual. */
+async function createResaleProduct(tx: Tx, ing: { id: number; name: string }, sell: SellInput) {
+  const price = Math.round(num(sell.price) * 100) / 100;
+  if (!(price > 0)) throw new UserError("Escribe el precio de venta");
+  let categoryId = sell.categoryId;
+  if (!categoryId) {
+    const catName = text(sell.newCategory);
+    if (!catName) throw new UserError("Elige la categoría del menú donde se va a vender");
+    const cat =
+      (await tx.category.findFirst({ where: { name: { equals: catName, mode: "insensitive" } } })) ??
+      (await tx.category.create({ data: { name: catName, kitchen: false } }));
+    categoryId = cat.id;
+  } else if (!(await tx.category.findUnique({ where: { id: categoryId } }))) {
+    throw new UserError("Esa categoría no existe");
+  }
+  if (await tx.product.findFirst({ where: { name: { equals: ing.name, mode: "insensitive" } } })) {
+    throw new UserError(`Ya hay un producto llamado "${ing.name}" en el menú. Ve a Menú, edítalo y en "Controlar stock" elige este insumo.`);
+  }
+  const product = await tx.product.create({
+    data: { name: ing.name, price, categoryId, taxRate: normalizeTaxRate(sell.taxRate) },
+  });
+  await tx.recipeItem.create({ data: { productId: product.id, ingredientId: ing.id, quantity: 1 } });
+  return product;
+}
+
+class UserError extends Error {}
+
+export async function saveIngredient(id: number | null, input: IngredientInput, sell?: SellInput | null): Promise<Result & { id?: number }> {
   await requireAdmin();
   const name = text(input.name);
   if (!name) return { success: false, error: "Escribe el nombre del insumo" };
@@ -61,24 +108,38 @@ export async function saveIngredient(id: number | null, input: IngredientInput):
   });
   if (dup) return { success: false, error: `Ya existe un insumo llamado "${dup.name}"` };
 
-  if (id) {
-    await prisma.ingredient.update({ where: { id }, data });
+  try {
+    const saved = await prisma.$transaction(async (tx) => {
+      let ing;
+      if (id) {
+        const before = await tx.ingredient.findUniqueOrThrow({ where: { id } });
+        ing = await tx.ingredient.update({ where: { id }, data });
+        // Su producto de reventa se llama igual: si cambia el nombre del insumo, cambia también en el menú
+        if (before.name !== ing.name) {
+          for (const p of await resaleProductsOf(tx, id)) {
+            const clash = await tx.product.findFirst({ where: { name: { equals: ing.name, mode: "insensitive" }, NOT: { id: p.id } } });
+            if (p.name === before.name && !clash) await tx.product.update({ where: { id: p.id }, data: { name: ing.name } });
+          }
+        }
+      } else {
+        const initial = Math.max(0, num(input.initialStock));
+        ing = await tx.ingredient.create({ data: { ...data, stock: initial } });
+        if (initial > 0) {
+          await tx.stockMovement.create({
+            data: { ingredientId: ing.id, type: "INITIAL", quantity: initial, stockAfter: initial, unitCost: ing.cost, note: "Stock inicial" },
+          });
+        }
+      }
+      if (sell && (await resaleProductsOf(tx, ing.id)).length === 0) await createResaleProduct(tx, ing, sell);
+      return ing;
+    });
     refreshInventory();
-    return { success: true, id };
+    if (sell) revalidatePath("/admin/productos");
+    return { success: true, id: saved.id };
+  } catch (e) {
+    if (e instanceof UserError) return { success: false, error: e.message };
+    throw e;
   }
-
-  const initial = Math.max(0, num(input.initialStock));
-  const created = await prisma.$transaction(async (tx) => {
-    const ing = await tx.ingredient.create({ data: { ...data, stock: initial } });
-    if (initial > 0) {
-      await tx.stockMovement.create({
-        data: { ingredientId: ing.id, type: "INITIAL", quantity: initial, stockAfter: initial, unitCost: ing.cost, note: "Stock inicial" },
-      });
-    }
-    return ing;
-  });
-  refreshInventory();
-  return { success: true, id: created.id };
 }
 
 /** Si el insumo ya tiene historial se archiva para no perder el kardex; si no, se elimina. */
@@ -350,7 +411,7 @@ export async function makeResaleProduct(productId: number): Promise<Result> {
  */
 export async function setProductStockControl(
   productId: number,
-  control: { minStock: number; maxStock: number | null; initialStock?: number } | null
+  control: { minStock: number; maxStock: number | null; initialStock?: number; ingredientId?: number | null; previousName?: string } | null
 ): Promise<Result> {
   await requireAdmin();
   const product = await prisma.product.findUnique({
@@ -370,8 +431,12 @@ export async function setProductStockControl(
   const minStock = Math.max(0, num(control.minStock));
   const maxStock = control.maxStock && control.maxStock > minStock ? control.maxStock : null;
 
+  const chosen = control.ingredientId ? await prisma.ingredient.findUnique({ where: { id: control.ingredientId } }) : null;
+  if (control.ingredientId && !chosen) return { success: false, error: "Ese insumo no existe" };
+
   await prisma.$transaction(async (tx) => {
     let ing =
+      chosen ??
       current ??
       (await tx.ingredient.findFirst({ where: { name: { equals: product.name, mode: "insensitive" } } }));
     if (!ing) {
@@ -384,7 +449,11 @@ export async function setProductStockControl(
       }
     } else {
       // Si cambió el nombre del producto, el insumo de reventa lo sigue (si no choca con otro)
+      // Solo si el insumo se llamaba igual que el producto: uno elegido con otro nombre conserva el suyo
       const rename =
+        !chosen &&
+        !!control.previousName &&
+        ing.name.toLowerCase() === control.previousName.trim().toLowerCase() &&
         ing.name !== product.name &&
         !(await tx.ingredient.findFirst({ where: { name: { equals: product.name, mode: "insensitive" }, NOT: { id: ing.id } } }));
       ing = await tx.ingredient.update({

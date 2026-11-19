@@ -21,7 +21,7 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
   const { filtro } = await searchParams;
   const business = await getBusiness();
   const since = startOfMonth();
-  const [ingredients, suppliers, monthPurchases, unpaid, waste] = await Promise.all([
+  const [ingredients, suppliers, monthPurchases, unpaid, waste, resale, categorias] = await Promise.all([
     prisma.ingredient.findMany({
       include: { supplier: true, _count: { select: { recipeItems: true } } },
       orderBy: { name: "asc" },
@@ -30,7 +30,15 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
     prisma.purchase.aggregate({ where: { status: "RECEIVED", date: { gte: since } }, _sum: { total: true }, _count: true }),
     prisma.purchase.aggregate({ where: { status: "RECEIVED", paid: false }, _sum: { total: true }, _count: true }),
     prisma.stockMovement.findMany({ where: { type: "WASTE", createdAt: { gte: since } }, select: { quantity: true, unitCost: true } }),
+    // Productos de reventa: 1 unidad de un solo insumo
+    prisma.recipeItem.findMany({
+      where: { quantity: 1, product: { isCombo: false } },
+      include: { product: { select: { name: true, price: true, _count: { select: { recipe: true } } } } },
+    }),
+    prisma.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
+  const soldAs = new Map<number, { name: string; price: number }>();
+  for (const r of resale) if (r.product._count.recipe === 1) soldAs.set(r.ingredientId, { name: r.product.name, price: r.product.price });
 
   const items: StockItem[] = ingredients.map((i) => ({
     id: i.id,
@@ -44,6 +52,7 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
     supplierName: i.supplier?.name ?? null,
     usedIn: i._count.recipeItems,
     active: i.active,
+    soldAs: soldAs.get(i.id) ?? null,
   }));
   const active = items.filter((i) => i.active);
   const value = active.reduce((s, i) => s + Math.max(i.stock, 0) * i.cost, 0);
@@ -158,9 +167,9 @@ export default async function InventarioPage({ searchParams }: { searchParams: P
             <PackagePlus /> Registrar compra
           </Link>
         </Button>
-        <IngredientDialog suppliers={supplierOptions} />
+        <IngredientDialog suppliers={supplierOptions} categories={categorias} />
       </SectionBar>
-      <StockManager items={items} suppliers={supplierOptions} initialFilter={filtro === "reponer" ? "reorder" : "all"} />
+      <StockManager items={items} suppliers={supplierOptions} categories={categorias} initialFilter={filtro === "reponer" ? "reorder" : "all"} />
     </>
   );
 }

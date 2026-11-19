@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/admin/AdminNav";
 export const dynamic = "force-dynamic";
 
 export default async function ProductosPage() {
-  const [productos, categorias] = await Promise.all([
+  const [productos, categorias, insumos] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -19,6 +19,7 @@ export default async function ProductosPage() {
       },
     }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
+    prisma.ingredient.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
   ]);
 
   const products = productos.map((p) => ({
@@ -48,15 +49,27 @@ export default async function ProductosPage() {
       : null,
   }));
   const categories = categorias.map((c) => ({ id: c.id, name: c.name, kitchen: c.kitchen }));
+  // Insumos que se pueden unir a un producto de reventa (y cuál producto ya vende cada uno)
+  const soldAs = new Map<number, string>();
+  for (const p of productos) if (!p.isCombo && p.recipe.length === 1 && p.recipe[0].quantity === 1) soldAs.set(p.recipe[0].ingredientId, p.name);
+  const inventory = insumos.map((i) => ({
+    id: i.id,
+    name: i.name,
+    unit: i.unit,
+    stock: i.stock,
+    minStock: i.minStock,
+    maxStock: i.maxStock,
+    soldAs: soldAs.get(i.id) ?? null,
+  }));
   const components = products.filter((p) => !p.combo).map(({ id, name, price, categoryId }) => ({ id, name, price, categoryId }));
 
   return (
     <>
       <PageHeader title="Menú" description="Productos, combos y precios que ven los meseros.">
         <ComboDialog products={components} categories={categories} />
-        <ProductModal categories={categories} />
+        <ProductModal categories={categories} inventory={inventory} />
       </PageHeader>
-      <ProductsManager products={products} categories={categories} />
+      <ProductsManager products={products} categories={categories} inventory={inventory} />
     </>
   );
 }

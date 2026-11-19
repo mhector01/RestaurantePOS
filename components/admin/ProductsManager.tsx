@@ -5,7 +5,7 @@ import { ChefHat, Search, Trash2, X } from "lucide-react";
 import { deleteCategory, deleteProduct, setCategoryKitchen } from "@/app/actions";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ProductModal, type StockInfo } from "@/components/ProductModal";
+import { ProductModal, type InventoryOption, type StockInfo } from "@/components/ProductModal";
 import { formatQty, stockLevel } from "@/lib/inventory";
 import { ComboDialog } from "@/components/admin/ComboDialog";
 import { ConfirmAction } from "@/components/pos/ConfirmAction";
@@ -27,7 +27,7 @@ interface Product {
   combo: { name: string; quantity: number; options: { productId: number; extraPrice: number }[] }[] | null;
 }
 
-export function ProductsManager({ products, categories }: { products: Product[]; categories: Category[] }) {
+export function ProductsManager({ products, categories, inventory }: { products: Product[]; categories: Category[]; inventory: InventoryOption[] }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const nameOf = new Map(products.map((p) => [p.id, p.name]));
@@ -82,7 +82,7 @@ export function ProductsManager({ products, categories }: { products: Product[];
               <span className="ml-2 text-sm font-normal text-muted-foreground">{total}</span>
             </h2>
             <KitchenToggle category={category} />
-            <ProductModal categories={categories} defaultCategoryId={category.id} compact />
+            <ProductModal categories={categories} defaultCategoryId={category.id} compact inventory={inventory} />
             {total === 0 && (
               <ConfirmAction
                 title={`¿Eliminar la categoría "${category.name}"?`}
@@ -145,7 +145,7 @@ export function ProductsManager({ products, categories }: { products: Product[];
                         categories={categories}
                       />
                     ) : (
-                      <ProductModal product={p} categories={categories} stock={p.stock} />
+                      <ProductModal product={p} categories={categories} stock={p.stock} inventory={inventory} />
                     )}
                     <ConfirmAction
                       title={`¿Eliminar "${p.name}"?`}

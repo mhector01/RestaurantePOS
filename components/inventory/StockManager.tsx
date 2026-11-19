@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Archive, ArchiveRestore, History, Search, X } from "lucide-react";
+import { Archive, ArchiveRestore, History, Search, Store, X } from "lucide-react";
 import { deleteIngredient, restoreIngredient } from "@/app/inventory-actions";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/pos/ConfirmAction";
-import { IngredientDialog, type IngredientRow, type SupplierOption } from "@/components/inventory/IngredientDialog";
+import { IngredientDialog, type CategoryOption, type IngredientRow, type SoldAs, type SupplierOption } from "@/components/inventory/IngredientDialog";
 import { WasteDialog } from "@/components/inventory/WasteDialog";
 import { formatMoney } from "@/lib/config";
 import { formatQty, stockLevel, type StockLevel } from "@/lib/inventory";
@@ -16,6 +16,7 @@ export interface StockItem extends IngredientRow {
   supplierName: string | null;
   usedIn: number; // productos cuya receta lo usa
   active: boolean;
+  soldAs: SoldAs | null; // se vende tal cual en el menú
 }
 
 type Filter = "all" | "reorder" | "out" | "archived";
@@ -29,10 +30,12 @@ export const LEVEL_STYLE: Record<StockLevel, { label: string; badge: string; bar
 export function StockManager({
   items,
   suppliers,
+  categories,
   initialFilter = "all",
 }: {
   items: StockItem[];
   suppliers: SupplierOption[];
+  categories: CategoryOption[];
   initialFilter?: Filter;
 }) {
   const [query, setQuery] = useState("");
@@ -133,7 +136,7 @@ export function StockManager({
           </div>
           <ul className="divide-y">
             {shown.map((i) => (
-              <StockRow key={i.id} item={i} suppliers={suppliers} />
+              <StockRow key={i.id} item={i} suppliers={suppliers} categories={categories} />
             ))}
           </ul>
         </div>
@@ -142,7 +145,7 @@ export function StockManager({
   );
 }
 
-function StockRow({ item: i, suppliers }: { item: StockItem; suppliers: SupplierOption[] }) {
+function StockRow({ item: i, suppliers, categories }: { item: StockItem; suppliers: SupplierOption[]; categories: CategoryOption[] }) {
   const lvl = stockLevel(i.stock, i.minStock);
   const st = LEVEL_STYLE[lvl];
   const scale = Math.max(i.maxStock ?? 0, i.minStock * 2, i.stock, 1);
@@ -157,8 +160,27 @@ function StockRow({ item: i, suppliers }: { item: StockItem; suppliers: Supplier
         <p className="text-xs text-muted-foreground truncate">
           {i.supplierName ?? "Sin proveedor"}
           {" · "}
-          {i.usedIn > 0 ? `En ${i.usedIn} receta${i.usedIn === 1 ? "" : "s"}` : "Sin receta"}
+          {i.soldAs ? (
+            <span className="text-primary">Se vende en el menú · {formatMoney(i.soldAs.price)}</span>
+          ) : i.usedIn > 0 ? (
+            `En ${i.usedIn} receta${i.usedIn === 1 ? "" : "s"}`
+          ) : (
+            "Sin receta"
+          )}
         </p>
+        {i.active && !i.soldAs && i.usedIn === 0 && (
+          <IngredientDialog
+            ingredient={i}
+            suppliers={suppliers}
+            categories={categories}
+            sellFirst
+            trigger={
+              <button type="button" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                <Store className="size-3.5" /> Vender en el menú
+              </button>
+            }
+          />
+        )}
       </div>
 
       <div className="col-span-2 md:col-span-1 row-start-2 md:row-start-auto min-w-0">
@@ -192,7 +214,7 @@ function StockRow({ item: i, suppliers }: { item: StockItem; suppliers: Supplier
                 <History className="size-4" />
               </Link>
             </Button>
-            <IngredientDialog ingredient={i} suppliers={suppliers} />
+            <IngredientDialog ingredient={i} suppliers={suppliers} categories={categories} soldAs={i.soldAs} />
             <ConfirmAction
               title={`¿Archivar "${i.name}"?`}
               description="Deja de aparecer en el stock y en las compras. Su historial se conserva y puedes restaurarlo cuando quieras."

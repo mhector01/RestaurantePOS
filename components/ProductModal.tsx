@@ -25,6 +25,37 @@ interface Product {
   categoryId: number;
   taxRate?: string;
 }
+/** Insumo del inventario que se puede vender tal cual (para unirlo al controlar stock). */
+export interface InventoryOption {
+  id: number;
+  name: string;
+  unit: string;
+  stock: number;
+  minStock: number;
+  maxStock: number | null;
+  soldAs: string | null; // nombre del producto que ya lo vende, si hay
+}
+
+const norm = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** Insumo que parece ser el mismo producto (mismo nombre, o uno contiene al otro). */
+function guessIngredient(name: string, options: InventoryOption[]) {
+  const n = norm(name);
+  if (n.length < 3) return null;
+  const free = options.filter((o) => !o.soldAs);
+  return (
+    free.find((o) => norm(o.name) === n) ??
+    (n.length >= 4 ? free.find((o) => norm(o.name).includes(n) || n.includes(norm(o.name))) : undefined) ??
+    null
+  );
+}
+
 /** Cómo se controla el stock del producto: reventa (1 unidad por venta) o con receta propia. */
 export type StockInfo =
   | { mode: "resale"; stock: number; minStock: number; maxStock: number | null }
@@ -37,8 +68,10 @@ export function ProductModal({
   defaultCategoryId,
   compact = false,
   stock = null,
+  inventory = [],
 }: {
   stock?: StockInfo;
+  inventory?: InventoryOption[];
   product?: Product;
   categories: Category[];
   defaultCategoryId?: number;
@@ -57,6 +90,22 @@ export function ProductModal({
   const [minStock, setMinStock] = useState("");
   const [maxStock, setMaxStock] = useState("");
   const [initial, setInitial] = useState("");
+  // Insumo del inventario al que se une: null = crear uno nuevo con el nombre del producto
+  const [ingredientId, setIngredientId] = useState<number | null>(null);
+  const [pickedByHand, setPickedByHand] = useState(false);
+  const wasResale = stock?.mode === "resale";
+  const linkable = inventory.filter((o) => !o.soldAs);
+  const chosen = linkable.find((o) => o.id === ingredientId) ?? null;
+
+  const choose = (id: number | null, byHand: boolean) => {
+    setIngredientId(id);
+    setPickedByHand(byHand);
+    const ing = inventory.find((o) => o.id === id);
+    if (ing) {
+      setMinStock(ing.minStock ? String(ing.minStock) : "");
+      setMaxStock(ing.maxStock ? String(ing.maxStock) : "");
+    }
+  };
 
   const reset = () => {
     setName(product?.name ?? "");
@@ -70,6 +119,8 @@ export function ProductModal({
     setMinStock(stock?.mode === "resale" && stock.minStock ? String(stock.minStock) : "");
     setMaxStock(stock?.mode === "resale" && stock.maxStock ? String(stock.maxStock) : "");
     setInitial("");
+    setIngredientId(null);
+    setPickedByHand(false);
   };
 
   const addCategory = async () => {
@@ -96,7 +147,14 @@ export function ProductModal({
       const saved = await saveProduct(product?.id ?? null, name, value, categoryId, taxRate);
       const wasTracked = stock?.mode === "resale";
       if (track) {
-        await setProductStockControl(saved.id, { minStock: min, maxStock: max, initialStock: parseQty(initial || "0") || 0 });
+        const res = await setProductStockControl(saved.id, {
+          minStock: min,
+          maxStock: max,
+          initialStock: chosen ? 0 : parseQty(initial || "0") || 0,
+          ingredientId: wasResale ? null : chosen?.id ?? null,
+          previousName: product?.name,
+        });
+        if (!res.success) toast.error(res.error ?? "No se pudo unir con el inventario");
       } else if (wasTracked) {
         await setProductStockControl(saved.id, null);
       }
@@ -145,7 +203,10 @@ export function ProductModal({
             <Input
               id="p-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (track && !wasResale && !pickedByHand) choose(guessIngredient(e.target.value, inventory)?.id ?? null, false);
+              }}
               placeholder="Ej. Hamburguesa doble"
               required
               autoFocus
@@ -254,7 +315,10 @@ export function ProductModal({
                 <input
                   type="checkbox"
                   checked={track}
-                  onChange={(e) => setTrack(e.target.checked)}
+                  onChange={(e) => {
+                    setTrack(e.target.checked);
+                    if (e.target.checked && !wasResale && !pickedByHand) choose(guessIngredient(name, inventory)?.id ?? null, false);
+                  }}
                   className="mt-1 size-5 accent-[var(--primary)]"
                 />
                 <span className="flex-1">
@@ -265,9 +329,34 @@ export function ProductModal({
                   </span>
                 </span>
               </label>
+              {track && !wasResale && linkable.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="p-ingredient" className="text-xs">
+                    ¿Ya lo tienes en el inventario?
+                  </Label>
+                  <select
+                    id="p-ingredient"
+                    value={ingredientId ?? ""}
+                    onChange={(e) => choose(e.target.value ? Number(e.target.value) : null, true)}
+                    className="w-full h-11 rounded-xl border border-input bg-card px-3 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">No, crearlo en el inventario{name.trim() ? ` como «${name.trim()}»` : ""}</option>
+                    {linkable.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        Sí: {o.name} · hay {formatQty(o.stock, o.unit)}
+                      </option>
+                    ))}
+                  </select>
+                  {chosen && (
+                    <p className="text-xs text-primary">
+                      Se une a «{chosen.name}» del inventario: cada venta descuenta de ahí, sin registrarlo dos veces.
+                    </p>
+                  )}
+                </div>
+              )}
               {track && (
                 <div className="grid grid-cols-3 gap-2">
-                  {stock?.mode !== "resale" && (
+                  {!wasResale && !chosen && (
                     <StockInput id="p-initial" label="Hay ahora" value={initial} onChange={setInitial} />
                   )}
                   <StockInput id="p-min" label="Avisar al llegar a" value={minStock} onChange={setMinStock} />
