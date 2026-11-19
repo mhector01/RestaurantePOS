@@ -28,6 +28,34 @@ function toBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
 }
 
+/**
+ * Logo: sin recortar, cabe en 600×300 y conserva la transparencia (WebP, o PNG si el navegador
+ * no sabe hacer WebP). Pensado para imprimirse en tickets de 80 mm.
+ */
+export async function resizeLogo(file: File): Promise<Blob> {
+  if (!file.type.startsWith("image/")) throw new Error("Elige una imagen");
+  let img;
+  try {
+    img = await load(file);
+  } catch {
+    throw new Error("No se pudo leer la imagen. Prueba con una PNG o JPG.");
+  }
+  const scale = Math.min(1, 600 / img.width, 300 / img.height);
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, w, h);
+  const webp = await toBlob(canvas, "image/webp", 0.9);
+  if (webp && webp.type === "image/webp") return webp;
+  const png = await toBlob(canvas, "image/png", 1);
+  if (!png) throw new Error("No se pudo procesar la imagen");
+  return png;
+}
+
 export async function resizeImage(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/")) throw new Error("Elige una foto");
   let img;

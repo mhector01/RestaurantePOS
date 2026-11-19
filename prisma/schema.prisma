@@ -17,6 +17,7 @@ model Restaurant {
   address     String    @default("")
   taxId       String    @default("") // RTN que se imprime en el ticket
   phone       String    @default("") // Teléfono que se imprime en el ticket
+  logo        String? // Logo para recibos y facturas (archivo en el almacenamiento de fotos, ver lib/uploads.ts)
   status      String    @default("ACTIVE") // ACTIVE o SUSPENDED
   suspendedAt DateTime?
   notes       String    @default("") // Notas internas de la plataforma (contacto, plan, acuerdos…); el restaurante no las ve

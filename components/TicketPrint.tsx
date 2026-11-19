@@ -52,6 +52,10 @@ export function TicketPrint({
   return createPortal(
     <div className="print-area hidden print:block bg-white text-black font-mono text-[11px] leading-snug">
       <div className="text-center pb-2 mb-2 border-b border-dashed border-black">
+        {business.logo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={business.logo} alt="" className="ticket-logo mx-auto mb-1.5 max-h-20 max-w-[70%] object-contain" />
+        )}
         <p className="text-sm font-bold uppercase">{business.name}</p>
         <p>{business.address}</p>
         {business.phone && <p>Tel. {business.phone}</p>}

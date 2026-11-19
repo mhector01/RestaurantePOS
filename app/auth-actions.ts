@@ -18,6 +18,7 @@ import {
 } from "@/lib/password";
 import { LOGIN_LIMIT, blockedMinutes, clearFailures, registerFailure } from "@/lib/rate-limit";
 import { planLimitProblem } from "@/lib/subscription";
+import { UploadError, deleteImage, saveImage } from "@/lib/uploads";
 
 type Result = { success: boolean; error?: string };
 
@@ -243,6 +244,35 @@ export async function saveBusiness(input: BusinessInput): Promise<Result> {
     where: { id: await currentRestaurantId() },
     data: { name, address: clean(input.address, 200), taxId, phone: clean(input.phone, 40) },
   });
+  revalidatePath("/", "layout");
+  return { success: true };
+}
+
+/** Logo para recibos y facturas. Recibe la imagen ya reducida por el navegador. */
+export async function setRestaurantLogo(form: FormData): Promise<Result> {
+  await requireAdmin("OWNER");
+  const file = form.get("file");
+  if (!(file instanceof Blob)) return { success: false, error: "No llegó la imagen" };
+  const id = await currentRestaurantId();
+  const current = await rootPrisma.restaurant.findUniqueOrThrow({ where: { id }, select: { logo: true } });
+  try {
+    const name = await saveImage(id, Buffer.from(await file.arrayBuffer()));
+    await rootPrisma.restaurant.update({ where: { id }, data: { logo: name } });
+    await deleteImage(id, current.logo);
+  } catch (e) {
+    if (e instanceof UploadError) return { success: false, error: e.message };
+    throw e;
+  }
+  revalidatePath("/", "layout");
+  return { success: true };
+}
+
+export async function removeRestaurantLogo(): Promise<Result> {
+  await requireAdmin("OWNER");
+  const id = await currentRestaurantId();
+  const current = await rootPrisma.restaurant.findUniqueOrThrow({ where: { id }, select: { logo: true } });
+  await rootPrisma.restaurant.update({ where: { id }, data: { logo: null } });
+  await deleteImage(id, current.logo);
   revalidatePath("/", "layout");
   return { success: true };
 }

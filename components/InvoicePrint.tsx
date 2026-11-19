@@ -2,6 +2,7 @@
 
 import { PAYMENT_LABEL, formatMoney } from "@/lib/config";
 import { amountInWords, formatRtn, type InvoiceView } from "@/lib/fiscal";
+import { useBusiness } from "@/components/BusinessProvider";
 
 const TAX_MARK: Record<string, string> = { "15": "G", "18": "G18", EXENTO: "E", MIXTO: "G" };
 
@@ -18,6 +19,7 @@ export function InvoiceBody({
   copy?: boolean;
 }) {
   const i = invoice.issuer;
+  const { logo } = useBusiness();
   const date = new Date(invoice.createdAt);
   const deadline = new Date(i.deadline);
   const fmtDate = (d: Date) => d.toLocaleDateString("es-HN", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -31,6 +33,10 @@ export function InvoiceBody({
   return (
     <div className="bg-white text-black font-mono text-[11px] leading-snug">
       <div className="text-center pb-2 mb-2 border-b border-dashed border-black">
+        {logo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="" className="ticket-logo mx-auto mb-1.5 max-h-20 max-w-[70%] object-contain" />
+        )}
         <p className="text-sm font-bold uppercase">{i.tradeName || i.legalName}</p>
         {i.tradeName && i.legalName && i.tradeName !== i.legalName && <p>{i.legalName}</p>}
         <p>RTN: {formatRtn(i.rtn)}</p>

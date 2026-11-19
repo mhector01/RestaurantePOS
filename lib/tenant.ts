@@ -7,6 +7,7 @@ import { rootPrisma } from "@/lib/prisma-base";
 import { tenantSlugFromHost } from "@/lib/tenant-host";
 import { BUSINESS } from "@/lib/config";
 import { billingOf, getPlatformSettings } from "@/lib/billing";
+import { imageUrl } from "@/lib/uploads";
 
 const forced = new AsyncLocalStorage<number>();
 
@@ -56,8 +57,9 @@ export async function currentRestaurantId(): Promise<number> {
  */
 export async function getBusiness() {
   const r = await getRestaurant();
-  if (!r?.name) return { name: BUSINESS.name, address: BUSINESS.address, taxId: BUSINESS.taxId, phone: r?.phone ?? "" };
-  return { name: r.name, address: r.address, taxId: r.taxId, phone: r.phone };
+  const logo = imageUrl(r?.logo);
+  if (!r?.name) return { name: BUSINESS.name, address: BUSINESS.address, taxId: BUSINESS.taxId, phone: r?.phone ?? "", logo };
+  return { name: r.name, address: r.address, taxId: r.taxId, phone: r.phone, logo };
 }
 
 export type BusinessInfo = Awaited<ReturnType<typeof getBusiness>>;

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InvoiceBody } from "@/components/InvoicePrint";
 import { normalizeRtn, type InvoiceView } from "@/lib/fiscal";
+import { printWhenReady } from "@/lib/print";
 
 export function InvoiceActions({ id, number, voided }: { id: number; number: string; voided: boolean }) {
   const [printing, setPrinting] = useState<InvoiceView | null>(null);
@@ -24,11 +25,9 @@ export function InvoiceActions({ id, number, voided }: { id: number; number: str
       const data = inv ?? (await getInvoiceForPrint(invId));
       if (!data) return toast.error("No se encontró la factura");
       setPrinting(data);
-      // Espera a que el contenido esté en el DOM antes de imprimir
-      setTimeout(() => {
-        window.print();
-        setPrinting(null);
-      }, 150);
+      // Espera a que el contenido (y el logo) estén listos antes de imprimir
+      await printWhenReady();
+      setPrinting(null);
     } finally {
       setBusy(false);
     }

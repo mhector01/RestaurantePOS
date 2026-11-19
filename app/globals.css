@@ -165,6 +165,10 @@
     top: 0;
     width: 76mm;
   }
+  /* Logo del restaurante: en gris y con más contraste, que es como mejor sale en impresoras térmicas */
+  .print-area .ticket-logo {
+    filter: grayscale(1) contrast(1.2);
+  }
   @page {
     margin: 3mm;
   }

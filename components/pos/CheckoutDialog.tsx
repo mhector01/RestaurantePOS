@@ -1,5 +1,6 @@
 "use client";
 
+import { printWhenReady } from "@/lib/print";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -181,7 +182,7 @@ export function CheckoutDialog({
             </p>
 
             <div className="grid grid-cols-2 gap-2 w-full mt-6">
-              <Button variant="outline" className="h-12 rounded-xl" onClick={() => window.print()}>
+              <Button variant="outline" className="h-12 rounded-xl" onClick={() => printWhenReady()}>
                 <Printer /> Imprimir
               </Button>
               <Button className="h-12 rounded-xl" onClick={finish}>
