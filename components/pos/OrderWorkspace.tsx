@@ -38,6 +38,7 @@ export interface MenuProduct {
   categoryId: number;
   /** Partes del combo; si alguna tiene varias opciones, se abre el selector al tocarlo. */
   combo?: ComboSlotView[] | null;
+  image?: string | null; // foto del producto (/media/…)
 }
 export interface MenuCategory {
   id: number;
@@ -497,12 +498,19 @@ export function OrderWorkspace({
                         soldOutSet.has(p.id) && qty === 0 && "opacity-60"
                       )}
                     >
-                      <span className={cn("h-1.5 w-full", st.bar)} />
-                      <span className="p-3.5 flex-1 flex flex-col">
-                        <span className={cn("size-10 rounded-xl grid place-items-center text-sm font-bold", st.soft)}>
-                          {initials(p.name)}
-                        </span>
-                        <span className="mt-2.5 font-medium leading-snug line-clamp-2">{p.name}</span>
+                      {p.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.image} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover bg-muted" />
+                      ) : (
+                        <span className={cn("h-1.5 w-full", st.bar)} />
+                      )}
+                      <span className={cn("flex-1 flex flex-col", p.image ? "p-3" : "p-3.5")}>
+                        {!p.image && (
+                          <span className={cn("size-10 rounded-xl grid place-items-center text-sm font-bold", st.soft)}>
+                            {initials(p.name)}
+                          </span>
+                        )}
+                        <span className={cn("font-medium leading-snug line-clamp-2", !p.image && "mt-2.5")}>{p.name}</span>
                         {soldOutSet.has(p.id) && (
                           <span className="mt-1 self-start text-[11px] font-semibold rounded-full px-2 py-0.5 bg-red-500/15 text-red-300">
                             Sin stock

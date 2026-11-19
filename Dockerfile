@@ -42,6 +42,11 @@ ENV NODE_ENV=production \
 
 RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nextjs
 
+# Fotos de los productos cuando NO hay almacenamiento S3 (variables S3_*). En ese caso monta aquí
+# un volumen persistente en Coolify (Persistent Storage → Volume Mount), si no se pierden en cada despliegue.
+ENV UPLOAD_DIR=/app/uploads
+RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads
+
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static

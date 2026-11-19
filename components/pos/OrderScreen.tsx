@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Clock, ShoppingBag } from "lucide-react";
 import prisma from "@/lib/prisma";
+import { imageUrl } from "@/lib/uploads";
 import { WaiterChip } from "@/components/pos/WaiterChip";
 import { OrderWorkspace } from "@/components/pos/OrderWorkspace";
 import { OrderNameEditor } from "@/components/pos/OrderNameEditor";
@@ -156,6 +157,7 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
           name: p.name,
           price: p.price,
           categoryId: p.categoryId,
+          image: imageUrl(p.image),
           combo: p.isCombo
             ? p.comboSlots.map((s) => ({
                 id: s.id,

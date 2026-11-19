@@ -3,6 +3,7 @@ import { ProductModal } from "@/components/ProductModal";
 import { ProductsManager } from "@/components/admin/ProductsManager";
 import { ComboDialog } from "@/components/admin/ComboDialog";
 import { PageHeader } from "@/components/admin/AdminNav";
+import { imageUrl } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function ProductosPage() {
     price: p.price,
     categoryId: p.categoryId,
     taxRate: p.taxRate,
+    image: imageUrl(p.image),
     // Reventa = receta de 1 sola unidad de un insumo; con otra receta, se controla desde Inventario → Recetas
     stock:
       p.recipe.length === 1 && p.recipe[0].quantity === 1

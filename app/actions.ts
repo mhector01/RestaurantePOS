@@ -6,6 +6,8 @@ import { cookies, headers } from "next/headers";
 import { normalizeShape } from "@/lib/floor";
 import { requireAdmin } from "@/lib/session";
 import { planLimitProblem } from "@/lib/subscription";
+import { deleteImage } from "@/lib/uploads";
+import { currentRestaurantId } from "@/lib/tenant";
 import { WAITER_COOKIE, signWaiterId, verifiedWaiterId } from "@/lib/waiter-session";
 import { PIN_LIMIT, blockedMinutes, clearFailures, registerFailure } from "@/lib/rate-limit";
 import { consumeForSale } from "@/lib/stock";
@@ -557,7 +559,8 @@ export async function deleteProduct(id: number) {
     return { success: false, error: `Es parte de: ${names}. Quítalo de esos combos primero.` };
   }
   try {
-    await prisma.product.delete({ where: { id } });
+    const deleted = await prisma.product.delete({ where: { id } });
+    await deleteImage(await currentRestaurantId(), deleted.image);
     revalidatePath("/admin/productos");
     revalidatePath("/");
     return { success: true };

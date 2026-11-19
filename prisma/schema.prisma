@@ -112,6 +112,7 @@ model Product {
   name         String
   price        Float
   taxRate      String     @default("15") // ISV: "15", "18" (alcohol y tabaco) o "EXENTO"
+  image        String? // Foto del producto (archivo en UPLOAD_DIR, ver lib/uploads.ts)
 
   // Relación con la tabla Category
   categoryId Int

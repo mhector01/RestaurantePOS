@@ -9,6 +9,7 @@ Punto de venta para restaurantes: mesas, comandas, pantalla de cocina, cobro (to
 - `/llevar`: pedidos para llevar. Se pueden atender varios a la vez; cada uno exige el nombre del cliente (y opcionalmente su teléfono). Se agrupan en *Listos para entregar* (no se entregan sin cobrar), *En curso* y *Entregados hoy*.
 - Cualquier cuenta de mesa puede llevar un **nombre de referencia** opcional ("Familia López"), visible en el plano, la cocina y el panel.
 - `/cocina`: pantalla de cocina. Muestra lo pendiente por mesa con el tiempo de espera; el cocinero marca cada plato como listo y el mesero ve el aviso en la mesa. En *Panel → Menú* eliges qué categorías van a cocina (por ejemplo, desactiva Bebidas).
+- Fotos de productos (*Panel → Menú*, al crear o editar un producto): se eligen o se toman con el celular, el navegador las recorta a 4:3 y las reduce (~100 KB) antes de subirlas, y se ven en el menú del panel y en los botones del punto de venta. Se guardan en un almacenamiento S3 (MinIO, Cloudflare R2…) si está configurado, o en disco (`UPLOAD_DIR`), siempre separadas por restaurante. El sistema las entrega por `/media/…` y cada restaurante solo ve las suyas, así que el bucket no tiene que ser público.
 - Combos (*Panel → Menú → Nuevo combo*): se arman por partes (Plato, Acompañante, Bebida…). Una parte con un solo producto va fija; con varios, el mesero elige al pedir y cada opción puede tener recargo. Cocina recibe los platos del combo, el ticket muestra lo elegido y el inventario descuenta cada componente según su receta.
 - `/admin/inventario`: inventario. Insumos con stock mínimo e ideal, proveedores, compras (pagadas o a crédito, con costo promedio), recetas por plato con su costo de alimento, mermas, conteo físico y kardex. Al cobrar se descuenta del stock lo que lleva cada plato según su receta; lo que llega al mínimo aparece en la lista de compras sugerida (agrupada por proveedor) y con alerta en el menú del panel. Los productos sin receta no se controlan.
 - `/admin/facturacion`: facturación de Honduras (Régimen de Facturación SAR). Datos del obligado tributario, rangos CAI con fecha límite (el correlativo se asigna sin repetirse y pasa solo al siguiente rango), ISV 15%, 18% o exento por producto (los precios incluyen ISV y la factura lo desglosa; los combos reparten su precio entre componentes), factura POS de 80 mm con los campos obligatorios, RTN del cliente opcional al cobrar, anulación y reemisión, alertas de rango por agotarse o vencer y libro de ventas mensual en CSV.
@@ -83,6 +84,11 @@ Abre http://localhost:3000. En desarrollo, si no defines `ADMIN_PASSWORD`, la cl
 | `ROOT_DOMAIN` | Para varios restaurantes | Dominio base de los subdominios, p. ej. `ristemo.com` → `<slug>.ristemo.com`. |
 | `PLATFORM_HOST` | No | Única dirección donde abre `/plataforma` (p. ej. `ristemo.com`). Si no se define, abre en cualquier dirección sin subdominio de restaurante. |
 | `DEFAULT_RESTAURANT` | No | Slug del restaurante que abre la dirección sin subdominio. Por defecto, el primero (`principal`). |
+| `S3_ENDPOINT` | Para fotos en S3 | Dirección de la API S3, p. ej. `https://minio.tudominio.com` (MinIO) o la de Cloudflare R2. |
+| `S3_BUCKET` | Para fotos en S3 | Bucket de las fotos, p. ej. `ristemo-fotos`. |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Para fotos en S3 | Clave con permiso solo sobre ese bucket (no uses la de administrador). |
+| `S3_REGION` / `S3_PREFIX` | No | Región (por defecto `us-east-1`; en R2 `auto`) y carpeta dentro del bucket, si se comparte. |
+| `UPLOAD_DIR` | Si no hay S3 | Carpeta de las fotos en disco. El Dockerfile la define en `/app/uploads`; en Coolify móntale un volumen persistente. En desarrollo usa `./uploads`. |
 | `TZ` | No | Zona horaria para "ventas de hoy" y horas del ticket. Por defecto `America/Tegucigalpa`. |
 | `NEXT_PUBLIC_BUSINESS_NAME` | No | Nombre del negocio (ticket y título) si el restaurante no tiene uno propio. **Build variable.** |
 | `NEXT_PUBLIC_BUSINESS_ADDRESS` | No | Dirección en el ticket si el restaurante no tiene una propia. **Build variable.** |
@@ -98,7 +104,14 @@ Las `NEXT_PUBLIC_*` se incrustan al compilar: si las cambias hay que volver a de
 2. **Aplicación:** *+ New → Application* desde el repositorio de GitHub, rama `main`, **Build Pack: Dockerfile**. Puerto expuesto: `3000`.
 3. **Variables:** agrega `DATABASE_URL` (la URL interna del paso 1), `ADMIN_PASSWORD`, `SESSION_SECRET` y, si quieres, las `NEXT_PUBLIC_*` marcadas como *Build Variable*.
 4. **Dominio:** asígnale un dominio con HTTPS (Coolify genera el certificado). Para varios restaurantes, mira *Subdominios de los restaurantes*.
-5. **Deploy.** Al arrancar, el contenedor aplica las migraciones pendientes (`prisma migrate deploy`) y luego inicia el servidor.
+5. **Fotos de productos** (elige una):
+   - **MinIO u otro S3 (recomendado):** en la consola de MinIO crea el bucket `ristemo-fotos` (privado) y, en *Access Keys → Create Access Key*, una clave con una política que solo permita ese bucket:
+     ```json
+     {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::ristemo-fotos/*"]}]}
+     ```
+     Luego agrega en la aplicación `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` y `S3_SECRET_ACCESS_KEY`. Respalda MinIO (o el bucket) fuera del servidor.
+   - **Volumen:** *Persistent Storage → + Add → Volume Mount* con *Destination Path* `/app/uploads`. Sin esto, las fotos se borran en cada despliegue.
+6. **Deploy.** Al arrancar, el contenedor aplica las migraciones pendientes (`prisma migrate deploy`) y luego inicia el servidor.
 
 La base empieza vacía: entra a `/admin` y crea mesas, categorías, productos y meseros.
 

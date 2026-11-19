@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Boxes, Loader2, Pencil, Plus } from "lucide-react";
+import { Boxes, Camera, ImageOff, Loader2, Pencil, Plus } from "lucide-react";
 import { createCategory, saveProduct } from "@/app/actions";
 import { setProductStockControl } from "@/app/inventory-actions";
+import { removeProductImage, setProductImage } from "@/app/media-actions";
+import { resizeImage } from "@/lib/resize-image";
+import { callAction } from "@/lib/client-action";
 import { formatQty, parseQty } from "@/lib/inventory";
 import { TAX_RATES, normalizeTaxRate } from "@/lib/fiscal";
 import { Button } from "@/components/ui/button";
@@ -24,6 +27,7 @@ interface Product {
   price: number;
   categoryId: number;
   taxRate?: string;
+  image?: string | null; // dirección de la foto (/media/…)
 }
 /** Insumo del inventario que se puede vender tal cual (para unirlo al controlar stock). */
 export interface InventoryOption {
@@ -92,6 +96,30 @@ export function ProductModal({
   const [initial, setInitial] = useState("");
   // Insumo del inventario al que se une: null = crear uno nuevo con el nombre del producto
   const [ingredientId, setIngredientId] = useState<number | null>(null);
+  // Foto: la nueva (ya reducida) se sube al guardar; "removePhoto" la quita
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const shownPhoto = photoPreview ?? (removePhoto ? null : product?.image ?? null);
+
+  const pickPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setProcessing(true);
+    try {
+      const blob = await resizeImage(file);
+      setPhoto(blob);
+      setPhotoPreview((old) => {
+        if (old) URL.revokeObjectURL(old);
+        return URL.createObjectURL(blob);
+      });
+      setRemovePhoto(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo leer la foto");
+    } finally {
+      setProcessing(false);
+    }
+  };
   const [pickedByHand, setPickedByHand] = useState(false);
   const wasResale = stock?.mode === "resale";
   const linkable = inventory.filter((o) => !o.soldAs);
@@ -121,6 +149,12 @@ export function ProductModal({
     setInitial("");
     setIngredientId(null);
     setPickedByHand(false);
+    setPhoto(null);
+    setPhotoPreview((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return null;
+    });
+    setRemovePhoto(false);
   };
 
   const addCategory = async () => {
@@ -158,6 +192,14 @@ export function ProductModal({
       } else if (wasTracked) {
         await setProductStockControl(saved.id, null);
       }
+      if (photo) {
+        const form = new FormData();
+        form.append("file", photo, "foto");
+        const res = await callAction(() => setProductImage(saved.id, form));
+        if (!res.success) toast.error(`Se guardó el producto, pero no la foto: ${res.error}`);
+      } else if (removePhoto && product?.image) {
+        await callAction(() => removeProductImage(saved.id));
+      }
       toast.success(product ? "Producto actualizado" : "Producto agregado");
       setOpen(false);
     } catch {
@@ -191,13 +233,56 @@ export function ProductModal({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-md rounded-3xl">
+      <DialogContent className="sm:max-w-md rounded-3xl max-h-[92dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{product ? "Editar producto" : "Nuevo producto"}</DialogTitle>
           <DialogDescription>Así aparecerá en el menú de los meseros.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={submit} className="space-y-5">
+          <div className="flex items-center gap-4">
+            <label
+              className={cn(
+                "relative size-24 shrink-0 rounded-2xl border overflow-hidden grid place-items-center cursor-pointer bg-muted/40 hover:border-primary/50",
+                !shownPhoto && "border-dashed"
+              )}
+              title="Elegir foto"
+            >
+              {shownPhoto ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={shownPhoto} alt="" className="absolute inset-0 size-full object-cover" />
+              ) : (
+                <Camera className="size-6 text-muted-foreground" />
+              )}
+              {processing && (
+                <span className="absolute inset-0 grid place-items-center bg-black/50">
+                  <Loader2 className="size-5 animate-spin" />
+                </span>
+              )}
+              <input type="file" accept="image/*" className="sr-only" onChange={(e) => pickPhoto(e.target.files?.[0])} aria-label="Foto del producto" />
+            </label>
+            <div className="min-w-0 text-sm">
+              <p className="font-medium">Foto</p>
+              <p className="text-xs text-muted-foreground">Opcional. Se ve en el menú de los meseros. Toca el cuadro para elegirla o tomarla.</p>
+              {shownPhoto && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhoto(null);
+                    setPhotoPreview((old) => {
+                      if (old) URL.revokeObjectURL(old);
+                      return null;
+                    });
+                    setRemovePhoto(true);
+                  }}
+                  className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-destructive"
+                >
+                  <ImageOff className="size-3.5" /> Quitar foto
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="p-name">Nombre</Label>
             <Input
@@ -366,7 +451,7 @@ export function ProductModal({
             </div>
           )}
 
-          <Button type="submit" className="w-full h-12 rounded-xl text-base" disabled={loading || creatingCat}>
+          <Button type="submit" className="w-full h-12 rounded-xl text-base" disabled={loading || creatingCat || processing}>
             {loading && <Loader2 className="animate-spin" />}
             {product ? "Guardar cambios" : "Agregar al menú"}
           </Button>

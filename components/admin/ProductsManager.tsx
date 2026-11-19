@@ -22,6 +22,7 @@ interface Product {
   price: number;
   categoryId: number;
   taxRate: string;
+  image: string | null;
   stock: StockInfo;
   /** Partes del combo; null si es un producto normal. */
   combo: { name: string; quantity: number; options: { productId: number; extraPrice: number }[] }[] | null;
@@ -103,6 +104,12 @@ export function ProductsManager({ products, categories, inventory }: { products:
             <ul className="divide-y">
               {items.map((p) => (
                 <li key={p.id} className="flex items-center gap-3 pl-5 pr-2 py-2.5">
+                  {p.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image} alt="" loading="lazy" className="size-11 rounded-xl object-cover shrink-0 border" />
+                  ) : (
+                    <span className="size-11 rounded-xl shrink-0 border border-dashed bg-muted/30" aria-hidden />
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">
                       {p.name}
