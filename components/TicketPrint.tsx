@@ -33,10 +33,13 @@ export function TicketPrint({
   payment,
   received,
   change,
+  copy = false,
 }: {
   payment: TicketPayment;
   received?: number;
   change?: number;
+  /** Reimpresión: marca el comprobante como COPIA. */
+  copy?: boolean;
 }) {
   const business = useBusiness();
   // Se monta directo en <body> para que la impresión no herede posiciones del diálogo.
@@ -48,7 +51,7 @@ export function TicketPrint({
     const reference = mesa === 0 ? `Para llevar · Pedido #${payment.order.id ?? ""}` : `Mesa ${mesa}`;
     return createPortal(
       <div className="print-area hidden print:block">
-        <InvoiceBody invoice={{ ...payment.invoice, reference }} received={received} change={change} />
+        <InvoiceBody invoice={{ ...payment.invoice, reference }} received={received} change={change} copy={copy} />
       </div>,
       document.body
     );
@@ -71,6 +74,7 @@ export function TicketPrint({
         <p>{mesa === 0 ? `Para llevar · Pedido #${payment.order.id ?? ""}` : `Mesa ${mesa}`}</p>
         {payment.order.name && <p className="font-bold">Cliente: {payment.order.name}</p>}
         <p>Comprobante #{payment.id}</p>
+        {copy && <p className="font-bold">*** COPIA ***</p>}
       </div>
 
       <table className="w-full mb-2 border-b border-dashed border-black">

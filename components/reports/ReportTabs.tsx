@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Landmark, LineChart, PiggyBank, UtensilsCrossed, Wallet } from "lucide-react";
+import { Landmark, LineChart, PiggyBank, Printer, UtensilsCrossed, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -10,6 +10,7 @@ const TABS = [
   { href: "/admin/reportes/productos", label: "Productos", Icon: UtensilsCrossed, keep: true },
   { href: "/admin/reportes/ganancias", label: "Ganancias", Icon: PiggyBank, keep: true },
   { href: "/admin/reportes/impuestos", label: "Impuestos SAR", Icon: Landmark, keep: true },
+  { href: "/admin/reportes/cobros", label: "Cobros", Icon: Printer, keep: true },
   { href: "/admin/reportes/caja", label: "Cierre de caja", Icon: Wallet, keep: false },
 ];
 
