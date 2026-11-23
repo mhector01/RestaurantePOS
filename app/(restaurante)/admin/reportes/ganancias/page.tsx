@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
+import { EXPENSE_CATEGORY_LABEL } from "@/lib/expenses";
 import { formatMoney } from "@/lib/config";
 import { delta, resolvePeriod } from "@/lib/period";
 import { productSales, profitSummary } from "@/lib/reports";
@@ -27,7 +29,14 @@ export default async function GananciasReportPage({ searchParams }: { searchPara
       tone: "neg",
       hint: g.countAdj > 0 ? formatMoney(g.countAdj) : undefined,
     },
-    { label: "Utilidad bruta real", value: g.adjusted, tone: "total" },
+    { label: "Utilidad bruta real", value: g.adjusted, tone: "sub" },
+    {
+      label: "− Gastos de operación (alquiler, sueldos, servicios…)",
+      value: -g.opex,
+      tone: "neg",
+      hint: g.expenseCount ? `${g.expenseCount} registro${g.expenseCount === 1 ? "" : "s"}` : "Ninguno registrado",
+    },
+    { label: "Utilidad neta", value: g.netProfit, tone: "total", hint: g.net > 0 ? `Margen ${pct(g.netMargin)}` : undefined },
   ];
 
   return (
@@ -50,11 +59,15 @@ export default async function GananciasReportPage({ searchParams }: { searchPara
           value={g.foodCost === null ? "—" : pct(g.foodCost)}
           hint={g.foodCost === null ? "Sin recetas con costo" : g.foodCost <= 0.35 ? "Saludable (25% – 35%)" : "Alto: revisa porciones y precios"}
         />
-        <StatTile label="Compras del periodo" value={formatMoney(g.purchases)} hint={`${g.purchaseCount} factura${g.purchaseCount === 1 ? "" : "s"} de proveedores`} />
+        <StatTile
+          label="Utilidad neta"
+          value={formatMoney(g.netProfit)}
+          hint={g.expenseCount ? `Después de ${formatMoney(g.opex)} en gastos` : "Registra tus gastos para verla completa"}
+        />
       </div>
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
-        <Panel title="Estado de resultados" description="De lo cobrado a lo que realmente queda, antes de gastos fijos.">
+        <Panel title="Estado de resultados" description="De lo cobrado a lo que realmente queda.">
           <dl className="text-sm">
             {rows.map((r) => (
               <div
@@ -74,8 +87,12 @@ export default async function GananciasReportPage({ searchParams }: { searchPara
             ))}
           </dl>
           <p className="text-xs text-muted-foreground mt-3">
-            No incluye gastos fijos (planilla, alquiler, luz, agua, gas). Réstalos de la utilidad bruta real para conocer la
-            utilidad neta del negocio.
+            Los gastos se registran en{" "}
+            <Link href="/admin/gastos" className="underline underline-offset-2 hover:text-foreground">
+              Gastos
+            </Link>
+            . Con factura cuentan sin el ISV (ese ISV es crédito fiscal); sin factura, completos. Compras de inventario del periodo:{" "}
+            {formatMoney(g.purchases)} (no se restan aquí: se restan como costo de lo vendido).
           </p>
         </Panel>
 
@@ -87,7 +104,15 @@ export default async function GananciasReportPage({ searchParams }: { searchPara
         </Panel>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 grid lg:grid-cols-2 gap-4">
+        <Panel title="Gastos de operación" description="Por categoría, sin el ISV a favor.">
+          <BarList
+            limit={8}
+            color="var(--series-2)"
+            rows={g.expensesByCategory.map((e) => ({ label: EXPENSE_CATEGORY_LABEL[e.category] ?? e.category, value: e.amount }))}
+            emptyText="No hay gastos registrados en el periodo"
+          />
+        </Panel>
         <Panel title="Los que más ganancia dejan" description="Utilidad bruta total en el periodo (solo productos con receta).">
           <BarList
             limit={8}

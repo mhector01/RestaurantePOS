@@ -63,7 +63,7 @@ export default async function ImpuestosReportPage({ searchParams }: { searchPara
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
         <StatTile hero label={t.payable >= 0 ? "ISV a pagar" : "Saldo a favor"} value={formatMoney(Math.abs(t.payable))} hint="Débito fiscal − crédito fiscal" />
         <StatTile label="Débito fiscal (ventas)" value={formatMoney(t.debit)} hint={`${t.count} facturas emitidas`} />
-        <StatTile label="Crédito fiscal (compras)" value={formatMoney(t.credit)} hint={`${t.purchasesCount} facturas de compra`} />
+        <StatTile label="Crédito fiscal (compras y gastos)" value={formatMoney(t.credit)} hint={`${t.purchasesCount} compras · ${t.expensesCount} gastos`} />
         <StatTile label="Ventas facturadas" value={formatMoney(t.total)} hint={t.voided ? `${t.voided} anulada${t.voided === 1 ? "" : "s"}` : "Sin anuladas"} />
       </div>
 
@@ -86,11 +86,19 @@ export default async function ImpuestosReportPage({ searchParams }: { searchPara
           )}
         </Panel>
 
-        <Panel title="Compras (crédito fiscal)" description="ISV pagado en las facturas de proveedores registradas en Inventario.">
+        <Panel title="Compras y gastos (crédito fiscal)" description="ISV pagado en las facturas de proveedores: compras de Inventario y Gastos.">
           <div className="text-sm">
-            <Row label="Total de compras" value={t.purchasesTotal} />
-            <Row label="ISV pagado en compras" value={t.credit} strong />
+            <Row label="Compras de inventario" value={t.purchasesTotal} />
+            <Row label="ISV pagado en compras" value={t.purchasesCredit} muted />
+            <Row label="Gastos (alquiler, servicios…)" value={t.expensesTotal} />
+            <Row label="ISV pagado en gastos con factura" value={t.expensesCredit} muted />
+            <Row label="Total crédito fiscal" value={t.credit} strong />
           </div>
+          {t.expensesWithoutInvoice > 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              {t.expensesWithoutInvoice} gasto{t.expensesWithoutInvoice === 1 ? "" : "s"} sin factura por {formatMoney(t.expensesWithoutInvoiceTotal)}: no dan crédito fiscal.
+            </p>
+          )}
           {t.purchasesWithoutTax > 0 && (
             <p className="text-xs text-amber-300 mt-2">
               {t.purchasesWithoutTax} compra{t.purchasesWithoutTax === 1 ? "" : "s"} sin ISV registrado. Si su factura traía ISV, edítala para no
@@ -102,7 +110,7 @@ export default async function ImpuestosReportPage({ searchParams }: { searchPara
               <thead className="text-xs text-muted-foreground">
                 <tr className="border-b">
                   <th className="text-left font-medium py-1.5">Proveedor</th>
-                  <th className="text-right font-medium">Compras</th>
+                  <th className="text-right font-medium">Total</th>
                   <th className="text-right font-medium">ISV</th>
                 </tr>
               </thead>
@@ -126,7 +134,7 @@ export default async function ImpuestosReportPage({ searchParams }: { searchPara
       <Panel title="Liquidación del ISV" className="mt-4">
         <div className="text-sm max-w-md">
           <Row label="Débito fiscal (ISV cobrado en ventas)" value={t.debit} />
-          <Row label="− Crédito fiscal (ISV pagado en compras)" value={-t.credit} muted />
+          <Row label="− Crédito fiscal (ISV pagado en compras y gastos)" value={-t.credit} muted />
           <Row label={t.payable >= 0 ? "ISV a pagar" : "Saldo a favor para el siguiente periodo"} value={Math.abs(t.payable)} strong />
         </div>
         <p className="text-xs text-muted-foreground mt-3">

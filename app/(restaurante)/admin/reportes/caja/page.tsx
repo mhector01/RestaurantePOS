@@ -1,4 +1,5 @@
-import { Banknote, CreditCard, HandCoins, Receipt, TrendingUp, Trophy } from "lucide-react";
+import Link from "next/link";
+import { Banknote, CreditCard, HandCoins, Receipt, TrendingUp, Trophy, Wallet } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { PrintAndCloseButton } from "@/components/PrintAndCloseButton";
 import { PageHeader } from "@/components/admin/AdminNav";
@@ -10,13 +11,19 @@ export const dynamic = "force-dynamic";
 
 export default async function ReportesPage() {
   const business = await getBusiness();
-  const [ordenesPagadas, openAccounts] = await Promise.all([
+  const [ordenesPagadas, openAccounts, cashExpenses] = await Promise.all([
     prisma.order.findMany({
       where: { status: "PAID" },
       include: { user: true, payments: true },
       orderBy: { updatedAt: "asc" },
     }),
     prisma.order.count({ where: { status: "OPEN", items: { some: {} } } }),
+    // Gastos pagados con el efectivo de la caja en este turno (aún no entran en un cierre)
+    prisma.expense.findMany({
+      where: { method: "REGISTER", paid: true, registerClosed: false, status: "ACTIVE" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, description: true, supplierName: true, total: true },
+    }),
   ]);
 
   let totalCash = 0;
@@ -43,6 +50,8 @@ export default async function ReportesPage() {
     }
   }
   const totalTips = tipsCash + tipsCard;
+  const cashOut = cashExpenses.reduce((s, e) => s + e.total, 0);
+  const drawer = totalCash + tipsCash - cashOut;
 
   const totalOrders = ordenesPagadas.length;
   const avg = totalOrders > 0 ? totalRevenue / totalOrders : 0;
@@ -102,11 +111,25 @@ export default async function ReportesPage() {
                 <span>{formatMoney(amount)}</span>
               </div>
             ))}
-            <div className="flex justify-between font-bold">
-              <span>Efectivo total en cajón</span>
-              <span>{formatMoney(totalCash + tipsCash)}</span>
-            </div>
           </>
+        )}
+        {cashOut > 0 && (
+          <>
+            <p>--------------------------------</p>
+            <p className="font-bold">Gastos pagados de la caja</p>
+            {cashExpenses.map((e) => (
+              <div key={e.id} className="flex justify-between">
+                <span className="truncate pr-2">  {e.description}</span>
+                <span>-{formatMoney(e.total)}</span>
+              </div>
+            ))}
+          </>
+        )}
+        {(cashOut > 0 || totalTips > 0) && (
+          <div className="flex justify-between font-bold">
+            <span>EFECTIVO QUE DEBE HABER</span>
+            <span>{formatMoney(drawer)}</span>
+          </div>
         )}
         <p>--------------------------------</p>
         <p className="font-bold">Por mesero</p>
@@ -132,7 +155,7 @@ export default async function ReportesPage() {
               : "Turno actual · aún sin ventas"
           }
         >
-          <PrintAndCloseButton hasSales={totalOrders > 0} openAccounts={openAccounts} />
+          <PrintAndCloseButton hasSales={totalOrders > 0 || cashOut > 0} openAccounts={openAccounts} />
         </PageHeader>
 
         {openAccounts > 0 && (
@@ -158,7 +181,7 @@ export default async function ReportesPage() {
             </div>
             <p className="text-sm text-muted-foreground mb-3">
               No son venta ni llevan ISV. En efectivo: {formatMoney(tipsCash)} (ya están en el cajón: hay {formatMoney(totalCash + tipsCash)} en
-              total). Con tarjeta: {formatMoney(tipsCard)} (hay que entregarlas en efectivo).
+              total{cashOut > 0 && `, antes de los gastos pagados de la caja`}). Con tarjeta: {formatMoney(tipsCard)} (hay que entregarlas en efectivo).
             </p>
             <ul className="divide-y rounded-xl border">
               {Object.entries(tipsByWaiter)
@@ -169,6 +192,35 @@ export default async function ReportesPage() {
                     <span className="font-semibold tabular">{formatMoney(amount)}</span>
                   </li>
                 ))}
+            </ul>
+          </section>
+        )}
+
+        {cashOut > 0 && (
+          <section className="mt-4 rounded-2xl border bg-card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Wallet className="size-5 text-primary" />
+              <h2 className="font-semibold">Gastos pagados de la caja</h2>
+              <span className="ml-auto font-semibold tabular">−{formatMoney(cashOut)}</span>
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Salieron del cajón en este turno. Efectivo que debe haber: <span className="font-semibold text-foreground">{formatMoney(drawer)}</span>{" "}
+              (ventas en efectivo {formatMoney(totalCash)}
+              {tipsCash > 0 && ` + propinas ${formatMoney(tipsCash)}`} − gastos {formatMoney(cashOut)}).{" "}
+              <Link href="/admin/gastos" className="underline underline-offset-2 hover:text-foreground">
+                Ver gastos
+              </Link>
+            </p>
+            <ul className="divide-y rounded-xl border">
+              {cashExpenses.map((e) => (
+                <li key={e.id} className="px-4 py-2.5 flex justify-between gap-3 text-sm">
+                  <span className="truncate">
+                    {e.description}
+                    {e.supplierName && <span className="text-muted-foreground"> · {e.supplierName}</span>}
+                  </span>
+                  <span className="font-semibold tabular shrink-0">−{formatMoney(e.total)}</span>
+                </li>
+              ))}
             </ul>
           </section>
         )}

@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { expenseCost } from "@/lib/expenses";
 import { bucketKey, buckets, type Period } from "@/lib/period";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -185,7 +186,7 @@ export async function productSales(period: Period) {
 
 export async function profitSummary(period: Period) {
   const range = { gte: period.start, lt: period.end };
-  const [lines, prevLines, movements, purchases] = await Promise.all([
+  const [lines, prevLines, movements, purchases, expenses] = await Promise.all([
     prisma.saleLine.findMany({
       where: { createdAt: range },
       select: { productId: true, name: true, quantity: true, total: true, net: true, tax: true, cost: true, createdAt: true },
@@ -193,6 +194,7 @@ export async function profitSummary(period: Period) {
     prisma.saleLine.aggregate({ where: { createdAt: { gte: period.prevStart, lt: period.prevEnd } }, _sum: { net: true, cost: true } }),
     prisma.stockMovement.findMany({ where: { createdAt: range, type: { in: ["WASTE", "COUNT"] } }, select: { type: true, quantity: true, unitCost: true } }),
     prisma.purchase.aggregate({ where: { status: "RECEIVED", date: range }, _sum: { total: true }, _count: true }),
+    prisma.expense.findMany({ where: { status: "ACTIVE", date: range }, select: { category: true, hasInvoice: true, total: true, isv15: true, isv18: true } }),
   ]);
   const gross = round2(lines.reduce((s, l) => s + l.total, 0));
   const tax = round2(lines.reduce((s, l) => s + l.tax, 0));
@@ -204,6 +206,12 @@ export async function profitSummary(period: Period) {
   const countAdj = round2(movements.filter((m) => m.type === "COUNT").reduce((s, m) => s + m.quantity * m.unitCost, 0));
   const grossProfit = round2(net - cost);
   const adjusted = round2(grossProfit - waste + Math.min(0, countAdj));
+  // Gastos de operación: con factura cuenta sin el ISV (es crédito fiscal); sin factura, completo
+  const byCat = new Map<string, number>();
+  for (const e of expenses) byCat.set(e.category, (byCat.get(e.category) ?? 0) + expenseCost(e));
+  const opex = round2([...byCat.values()].reduce((a, b) => a + b, 0));
+  const expensesByCategory = [...byCat.entries()].map(([category, amount]) => ({ category, amount: round2(amount) })).sort((a, b) => b.amount - a.amount);
+  const netProfit = round2(adjusted - opex);
   const costedNet = round2(lines.reduce((s, l, i) => s + (est[i] !== null ? l.net : 0), 0));
   const prevNet = prevLines._sum.net ?? 0;
   const prevProfit = prevNet - (prevLines._sum.cost ?? 0);
@@ -227,6 +235,11 @@ export async function profitSummary(period: Period) {
     waste,
     countAdj,
     adjusted,
+    opex,
+    expenseCount: expenses.length,
+    expensesByCategory,
+    netProfit,
+    netMargin: net > 0 ? netProfit / net : 0,
     purchases: round2(purchases._sum.total ?? 0),
     purchaseCount: purchases._count,
     prevProfit,
@@ -240,17 +253,22 @@ export async function profitSummary(period: Period) {
 
 export async function taxSummary(period: Period) {
   const range = { gte: period.start, lt: period.end };
-  const [invoices, purchases, payments, settings] = await Promise.all([
+  const [invoices, purchases, payments, settings, expenses] = await Promise.all([
     prisma.invoice.findMany({ where: { createdAt: range }, orderBy: { sequence: "asc" } }),
     prisma.purchase.findMany({ where: { status: "RECEIVED", date: range }, include: { supplier: true } }),
     prisma.payment.findMany({ where: { createdAt: range }, include: { invoices: { where: { status: "ISSUED" }, select: { id: true } } } }),
     prisma.fiscalSettings.findFirst(),
+    prisma.expense.findMany({ where: { status: "ACTIVE", date: range } }),
   ]);
   const valid = invoices.filter((i) => i.status === "ISSUED");
   const sum = (k: "exempt" | "exonerated" | "taxable15" | "taxable18" | "isv15" | "isv18" | "total") =>
     round2(valid.reduce((s, i) => s + i[k], 0));
   const debit = round2(sum("isv15") + sum("isv18"));
-  const credit = round2(purchases.reduce((s, p) => s + p.tax, 0));
+  const purchasesCredit = round2(purchases.reduce((s, p) => s + p.tax, 0));
+  // Gastos con factura: su ISV también es crédito fiscal
+  const invoicedExpenses = expenses.filter((e) => e.hasInvoice);
+  const expensesCredit = round2(invoicedExpenses.reduce((s, e) => s + e.isv15 + e.isv18, 0));
+  const credit = round2(purchasesCredit + expensesCredit);
   const purchasesTotal = round2(purchases.reduce((s, p) => s + p.total, 0));
   const unbilled = payments.filter((p) => p.invoices.length === 0);
   return {
@@ -272,14 +290,23 @@ export async function taxSummary(period: Period) {
     purchasesTotal,
     purchasesCount: purchases.length,
     purchasesWithoutTax: purchases.filter((p) => p.tax <= 0).length,
+    purchasesCredit,
+    expensesTotal: round2(expenses.reduce((s, e) => s + e.total, 0)),
+    expensesCount: expenses.length,
+    expensesCredit,
+    expensesWithoutInvoice: expenses.length - invoicedExpenses.length,
+    expensesWithoutInvoiceTotal: round2(expenses.filter((e) => !e.hasInvoice).reduce((s, e) => s + e.total, 0)),
     unbilledCount: unbilled.length,
     unbilledTotal: round2(unbilled.reduce((s, p) => s + p.amount, 0)),
-    suppliers: [...purchases.reduce((m, p) => {
-      const k = p.supplier?.name ?? "Sin proveedor";
-      const e = m.get(k) ?? { total: 0, tax: 0, rtn: p.supplier?.taxId ?? "" };
+    suppliers: [...[
+      ...purchases.map((p) => ({ name: p.supplier?.name ?? "Sin proveedor", rtn: p.supplier?.taxId ?? "", total: p.total, tax: p.tax })),
+      ...expenses.map((e) => ({ name: e.supplierName || "Sin proveedor", rtn: e.supplierRtn, total: e.total, tax: e.hasInvoice ? e.isv15 + e.isv18 : 0 })),
+    ].reduce((m, p) => {
+      const e = m.get(p.name) ?? { total: 0, tax: 0, rtn: p.rtn };
       e.total += p.total;
       e.tax += p.tax;
-      m.set(k, e);
+      if (!e.rtn) e.rtn = p.rtn;
+      m.set(p.name, e);
       return m;
     }, new Map<string, { total: number; tax: number; rtn: string }>())].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total),
   };

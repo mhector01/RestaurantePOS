@@ -56,6 +56,31 @@ export async function resizeLogo(file: File): Promise<Blob> {
   return png;
 }
 
+/** Foto de un documento (factura de proveedor): sin recortar, hasta 1600 px, en JPEG legible. */
+export async function resizeDocument(file: File): Promise<Blob> {
+  if (!file.type.startsWith("image/")) throw new Error("Elige una foto");
+  let img;
+  try {
+    img = await load(file);
+  } catch {
+    throw new Error("No se pudo leer la foto. Prueba con una JPG o PNG.");
+  }
+  const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#fff"; // fondo blanco para PNG transparentes
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  for (const q of [0.82, 0.7, 0.55]) {
+    const jpg = await toBlob(canvas, "image/jpeg", q);
+    if (jpg && jpg.size < 780 * 1024) return jpg;
+  }
+  throw new Error("La foto es demasiado pesada");
+}
+
 export async function resizeImage(file: File): Promise<Blob> {
   if (!file.type.startsWith("image/")) throw new Error("Elige una foto");
   let img;

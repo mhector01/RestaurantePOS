@@ -3,6 +3,7 @@ import { getAdmin } from "@/lib/session";
 import { getBusiness } from "@/lib/tenant";
 import { isoDay, resolvePeriod } from "@/lib/period";
 import { productSales, profitSummary, salesSummary, taxSummary } from "@/lib/reports";
+import { EXPENSE_CATEGORY_LABEL, EXPENSE_METHOD_LABEL, expenseCost } from "@/lib/expenses";
 
 export const dynamic = "force-dynamic";
 
@@ -76,8 +77,14 @@ export async function GET(request: Request) {
       ["Mermas", -g.waste],
       ["Ajustes de conteo", g.countAdj],
       ["Utilidad bruta real", g.adjusted],
+      ["Gastos de operación (sin ISV a favor)", -g.opex],
+      ["Utilidad neta", g.netProfit],
+      ["Margen neto %", Math.round(g.netMargin * 1000) / 10],
       ["Compras del periodo", g.purchases],
       ["% de ventas con costo conocido", Math.round(g.coverage * 1000) / 10],
+      [],
+      ["Gastos por categoría", "Monto"],
+      ...g.expensesByCategory.map((e) => [EXPENSE_CATEGORY_LABEL[e.category] ?? e.category, e.amount]),
       [],
       ["Periodo", "Utilidad bruta"],
       ...g.series.map((b) => [b.long, b.value]),
@@ -99,8 +106,11 @@ export async function GET(request: Request) {
       ["Primera factura", t.first ?? ""],
       ["Última factura", t.last ?? ""],
       [],
-      ["Total de compras", t.purchasesTotal],
-      ["Crédito fiscal (ISV en compras)", t.credit],
+      ["Compras de inventario", t.purchasesTotal],
+      ["ISV en compras", t.purchasesCredit],
+      ["Gastos", t.expensesTotal],
+      ["ISV en gastos con factura", t.expensesCredit],
+      ["Crédito fiscal total", t.credit],
       [],
       [t.payable >= 0 ? "ISV a pagar" : "Saldo a favor", Math.abs(t.payable)],
       [],
@@ -121,11 +131,78 @@ export async function GET(request: Request) {
       ["TOTALES", `${valid.length} emitidas`, "", "", "", sum("exempt"), sum("exonerated"), sum("taxable15"), sum("taxable18"), sum("isv15"), sum("isv18"), sum("total"), ""],
     ];
   } else if (tipo === "libro-compras") {
-    const purchases = await prisma.purchase.findMany({ where: { status: "RECEIVED", date: range }, include: { supplier: true }, orderBy: { date: "asc" } });
+    const [purchases, expenses] = await Promise.all([
+      prisma.purchase.findMany({ where: { status: "RECEIVED", date: range }, include: { supplier: true } }),
+      // Solo los gastos con factura: los que no tienen no son documentos fiscales
+      prisma.expense.findMany({ where: { status: "ACTIVE", hasInvoice: true, date: range } }),
+    ]);
+    const lines = [
+      ...purchases.map((p) => ({
+        date: p.date,
+        row: [date(p.date), "Compra (inventario)", p.supplier?.name ?? "Sin proveedor", p.supplier?.taxId ?? "", p.invoice ?? "", "", 0, p.total - p.tax, 0, p.tax, 0, p.total, p.paid ? "Pagada" : "Pendiente"] as Cell[],
+        total: p.total,
+        tax: p.tax,
+      })),
+      ...expenses.map((e) => ({
+        date: e.date,
+        row: [date(e.date), `Gasto: ${EXPENSE_CATEGORY_LABEL[e.category] ?? e.category}`, e.supplierName || "Sin proveedor", e.supplierRtn, e.invoiceNumber, e.cai, e.exempt, e.taxable15, e.taxable18, e.isv15, e.isv18, e.total, e.paid ? "Pagada" : "Pendiente"] as Cell[],
+        total: e.total,
+        tax: e.isv15 + e.isv18,
+      })),
+    ].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const sumE = (k: "exempt" | "taxable15" | "taxable18" | "isv15" | "isv18") => expenses.reduce((s, e) => s + e[k], 0);
     rows = [
-      ["Fecha", "Proveedor", "RTN proveedor", "Número de factura", "Total", "ISV (crédito fiscal)", "Importe sin ISV", "Estado de pago"],
-      ...purchases.map((p) => [date(p.date), p.supplier?.name ?? "Sin proveedor", p.supplier?.taxId ?? "", p.invoice ?? "", p.total, p.tax, p.total - p.tax, p.paid ? "Pagada" : "Pendiente"]),
-      ["TOTALES", `${purchases.length} facturas`, "", "", purchases.reduce((s, p) => s + p.total, 0), purchases.reduce((s, p) => s + p.tax, 0), purchases.reduce((s, p) => s + p.total - p.tax, 0), ""],
+      ["Fecha", "Tipo", "Proveedor", "RTN proveedor", "Número de factura", "CAI", "Exento", "Gravado 15%", "Gravado 18%", "ISV 15%", "ISV 18%", "Total", "Estado de pago"],
+      ...lines.map((l) => l.row),
+      [
+        "TOTALES",
+        `${lines.length} facturas`,
+        "",
+        "",
+        "",
+        "",
+        sumE("exempt"),
+        purchases.reduce((s, p) => s + p.total - p.tax, 0) + sumE("taxable15"),
+        sumE("taxable18"),
+        purchases.reduce((s, p) => s + p.tax, 0) + sumE("isv15"),
+        sumE("isv18"),
+        lines.reduce((s, l) => s + l.total, 0),
+        "",
+      ],
+    ];
+    rows.push([], ["Las compras de inventario se registran con un solo ISV: se muestran como gravado 15%."]);
+  } else if (tipo === "gastos") {
+    const expenses = await prisma.expense.findMany({ where: { date: range }, orderBy: [{ date: "asc" }, { id: "asc" }] });
+    const active = expenses.filter((e) => e.status === "ACTIVE");
+    rows = [
+      ["Fecha", "Categoría", "Descripción", "Proveedor", "RTN proveedor", "Comprobante", "Número de factura", "CAI", "Exento", "Gravado 15%", "Gravado 18%", "ISV 15%", "ISV 18%", "Total", "Costo (sin ISV a favor)", "Forma de pago", "Pagado", "Estado", "Notas", "Registró"],
+      ...expenses.map((e) => {
+        const v = e.status === "VOID";
+        const z = (n: number) => (v ? 0 : n);
+        return [
+          date(e.date),
+          EXPENSE_CATEGORY_LABEL[e.category] ?? e.category,
+          e.description,
+          e.supplierName,
+          e.supplierRtn,
+          e.hasInvoice ? "Factura" : "Sin factura",
+          e.invoiceNumber,
+          e.cai,
+          z(e.exempt),
+          z(e.taxable15),
+          z(e.taxable18),
+          z(e.isv15),
+          z(e.isv18),
+          z(e.total),
+          z(expenseCost(e)),
+          EXPENSE_METHOD_LABEL[e.method] ?? e.method,
+          e.paid ? "Sí" : "No",
+          v ? `ANULADO: ${e.voidReason ?? ""}` : "Activo",
+          e.notes,
+          e.createdBy ?? "",
+        ];
+      }),
+      ["TOTALES", `${active.length} gastos`, "", "", "", "", "", "", ...(["exempt", "taxable15", "taxable18", "isv15", "isv18", "total"] as const).map((k) => active.reduce((s, e) => s + e[k], 0)), active.reduce((s, e) => s + expenseCost(e), 0), "", "", "", "", ""],
     ];
   } else {
     return new Response("Reporte desconocido", { status: 400 });

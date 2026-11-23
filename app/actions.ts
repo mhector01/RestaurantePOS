@@ -911,10 +911,12 @@ export async function logoutWaiter() {
 // --- CIERRE DE CAJA ---
 export async function closeRegister() {
   await requireAdmin();
-  await prisma.order.updateMany({
-    where: { status: "PAID" },
-    data: { status: "CLOSED" },
-  });
+  await prisma.$transaction([
+    prisma.order.updateMany({ where: { status: "PAID" }, data: { status: "CLOSED" } }),
+    // Los gastos pagados con efectivo de la caja quedan incluidos en este cierre
+    prisma.expense.updateMany({ where: { method: "REGISTER", paid: true, registerClosed: false }, data: { registerClosed: true } }),
+  ]);
   revalidatePath("/admin/reportes", "layout");
+  revalidatePath("/admin/gastos");
   revalidatePath("/admin");
 }

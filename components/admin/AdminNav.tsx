@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Armchair, BarChart3, ChefHat, FileText, LayoutDashboard, LogOut, Package, Settings, Store, UsersRound, UtensilsCrossed } from "lucide-react";
+import { Armchair, BarChart3, ChefHat, FileText, HandCoins, LayoutDashboard, LogOut, Package, Settings, Store, UsersRound, UtensilsCrossed } from "lucide-react";
 import { logoutAdmin } from "@/app/auth-actions";
 import { cn } from "@/lib/utils";
 import { BrandLogo, BrandMark } from "@/components/Brand";
@@ -12,6 +12,7 @@ const NAV = [
   { href: "/admin/reportes", label: "Reportes", Icon: BarChart3 },
   { href: "/admin/productos", label: "Menú", Icon: UtensilsCrossed },
   { href: "/admin/inventario", label: "Inventario", Icon: Package },
+  { href: "/admin/gastos", label: "Gastos", Icon: HandCoins },
   { href: "/admin/facturacion", label: "Facturas", Icon: FileText },
   { href: "/admin/mesas", label: "Plano", Icon: Armchair },
   { href: "/admin/usuarios", label: "Personal", Icon: UsersRound },
@@ -159,7 +160,7 @@ export function AdminMobileNav({
         </form>
       </header>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t grid grid-cols-7 pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t grid grid-cols-8 pb-[env(safe-area-inset-bottom)]">
         {NAV.map(({ href, label, Icon }) => (
           <Link
             key={href}

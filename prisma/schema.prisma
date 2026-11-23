@@ -63,6 +63,7 @@ model Restaurant {
   loginTickets         LoginTicket[]
   supportAccesses      SupportAccess[]
   paymentDiscounts     PaymentDiscount[]
+  expenses             Expense[]
 }
 
 // Nuestras tablas
@@ -291,6 +292,7 @@ model Supplier {
   active       Boolean      @default(true)
   purchases    Purchase[]
   ingredients  Ingredient[] // Insumos que se le compran normalmente
+  expenses     Expense[]
   createdAt    DateTime     @default(now())
 
   @@index([restaurantId])
@@ -669,4 +671,44 @@ model PaymentDiscount {
 
   @@index([restaurantId, createdAt])
   @@index([paymentId])
+}
+
+// ---------------------------------------------------------------------------
+// GASTOS: lo que no entra al inventario (alquiler, luz, sueldos, mantenimiento…),
+// con su ISV para el crédito fiscal y el libro de compras.
+// ---------------------------------------------------------------------------
+
+model Expense {
+  id             Int        @id @default(autoincrement())
+  restaurantId   Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id])
+  date           DateTime // Fecha del documento (factura o recibo)
+  category       String // RENT, ELECTRICITY, WATER… (ver lib/expenses.ts)
+  description    String
+  supplierId     Int?
+  supplier       Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierName   String     @default("") // Si no es un proveedor registrado
+  supplierRtn    String     @default("")
+  hasInvoice     Boolean    @default(true) // Factura con CAI: su ISV es crédito fiscal
+  invoiceNumber  String     @default("")
+  cai            String     @default("")
+  exempt         Float      @default(0) // Importe exento / sin ISV
+  taxable15      Float      @default(0)
+  taxable18      Float      @default(0)
+  isv15          Float      @default(0)
+  isv18          Float      @default(0)
+  total          Float
+  method         String // REGISTER (de la caja del turno), CASH, TRANSFER, CARD, CHECK, CREDIT (por pagar)
+  paid           Boolean    @default(true)
+  paidAt         DateTime?
+  registerClosed Boolean    @default(false) // Pagado de la caja y ya incluido en un cierre
+  attachment     String? // Foto de la factura (almacenamiento de fotos)
+  notes          String     @default("")
+  status         String     @default("ACTIVE") // ACTIVE o VOID
+  voidReason     String?
+  createdBy      String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([restaurantId, date])
 }
