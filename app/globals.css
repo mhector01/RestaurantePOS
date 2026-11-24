@@ -144,6 +144,16 @@
   75% { transform: translateX(8px); }
 }
 
+/* Página de venta (/sistema) */
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes landing-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
 @utility tabular {
   font-variant-numeric: tabular-nums;
 }

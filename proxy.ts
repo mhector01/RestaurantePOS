@@ -2,13 +2,35 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE, sessionForHost } from "@/lib/session";
 import { PLATFORM_COOKIE, platformSessionFor } from "@/lib/platform-session";
-import { isPlatformHost } from "@/lib/tenant-host";
+import { isLandingHost, isPlatformHost } from "@/lib/tenant-host";
+import { restaurantForHost } from "@/lib/tenant";
+import { restaurantUrl } from "@/lib/platform";
+
+// Pantallas de un restaurante: en el dominio principal se mandan al subdominio del restaurante por defecto.
+const RESTAURANT_PATHS = ["/login", "/admin", "/cocina", "/llevar", "/mesa", "/media"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  return pathname.startsWith("/plataforma") ? platform(request) : restaurantAdmin(request);
+  if (pathname.startsWith("/plataforma")) return platform(request);
+  const host = request.headers.get("host");
+  if (isLandingHost(host)) {
+    // El dominio principal es el sitio de Ristemo: "/" muestra la página de venta.
+    if (pathname === "/") return NextResponse.rewrite(new URL("/sistema", request.url));
+    if (pathname === "/sistema") return NextResponse.redirect(new URL("/", request.url), 308);
+    if (RESTAURANT_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      const target = await defaultRestaurantUrl(host);
+      if (target) return NextResponse.redirect(new URL(pathname + request.nextUrl.search, target));
+    }
+  }
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return restaurantAdmin(request);
+  return NextResponse.next();
 }
 
+/** Dirección propia (subdominio) del restaurante que antes abría en el dominio principal. */
+async function defaultRestaurantUrl(host: string | null) {
+  const r = await restaurantForHost(host).catch(() => null);
+  return r ? restaurantUrl(r.slug) : null;
+}
 // /admin: hace falta una sesión abierta en ESTE restaurante.
 // Con contraseña temporal, la única pantalla permitida es "Mi cuenta" hasta poner una propia.
 async function restaurantAdmin(request: NextRequest) {
@@ -44,5 +66,16 @@ async function platform(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/plataforma", "/plataforma/:path*"],
+  matcher: [
+    "/",
+    "/sistema",
+    "/login",
+    "/admin/:path*",
+    "/cocina/:path*",
+    "/llevar/:path*",
+    "/mesa/:path*",
+    "/media/:path*",
+    "/plataforma",
+    "/plataforma/:path*",
+  ],
 };

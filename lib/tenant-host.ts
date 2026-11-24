@@ -28,6 +28,21 @@ export function isPlatformHost(host: string | null | undefined) {
   return !!h && tenantSlugFromHost(h) === null;
 }
 
+/**
+ * ¿Esta dirección es la del sitio de Ristemo (página de venta en "/")?
+ * Solo el dominio principal (PLATFORM_HOST o ROOT_DOMAIN, con o sin www) y, en desarrollo, "localhost".
+ * Una instalación de un solo restaurante (sin esas variables) sigue abriendo su punto de venta en "/".
+ */
+export function isLandingHost(host: string | null | undefined) {
+  const h = (host ?? "").split(":")[0].trim().toLowerCase();
+  if (!h) return false;
+  const main =
+    process.env.PLATFORM_HOST?.split(":")[0].trim().toLowerCase() ||
+    process.env.ROOT_DOMAIN?.trim().toLowerCase().replace(/^\./, "");
+  if (main) return h === main || h === `www.${main}`;
+  return process.env.NODE_ENV !== "production" && h === "localhost";
+}
+
 /** Slug válido para un subdominio: minúsculas, números y guiones. */
 export function normalizeSlug(value: string) {
   const s = value

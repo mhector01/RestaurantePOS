@@ -28,8 +28,15 @@ Una sola instalación atiende a varios restaurantes. Cada uno entra por su subdo
 
 - El aislamiento es automático: el cliente de Prisma (`lib/prisma.ts`) filtra y firma cada consulta con el restaurante de la petición (`lib/tenant.ts`). Para tareas de la plataforma existe `rootPrisma` (`lib/prisma-base.ts`), sin filtro.
 - Segunda barrera en PostgreSQL: los triggers `tenant_guard` impiden que una fila apunte a otra de un restaurante distinto, y un INSERT sin restaurante falla.
-- Una dirección sin subdominio (o con `www`) abre el restaurante por defecto; un subdominio que no existe muestra "Restaurante no encontrado". Un restaurante con `status = SUSPENDED` queda bloqueado.
+- Una dirección sin subdominio abre el restaurante por defecto, salvo en el dominio principal (ver *Página de venta*); un subdominio que no existe muestra "Restaurante no encontrado". Un restaurante con `status = SUSPENDED` queda bloqueado.
 - Los restaurantes se crean y se suspenden desde el panel de la plataforma (abajo). Para probar en tu compu entra a `http://<slug>.localhost:3000`.
+
+### Página de venta
+
+En el dominio principal (`PLATFORM_HOST` o `ROOT_DOMAIN`, con o sin `www`; en desarrollo, `http://localhost:3000`), `/` muestra la página que vende Ristemo: funciones, pantallas de ejemplo, precios y preguntas. Los precios salen de los planes activos, y los botones llevan a `/registro` si el registro público está activo o, si no, al WhatsApp de soporte (*Plataforma → Ajustes*). Si la base no responde, la página se muestra igual, sin precios.
+
+- Las pantallas de un restaurante (`/login`, `/admin`, `/cocina`, `/llevar`, `/mesa`) abiertas en el dominio principal se redirigen al subdominio del restaurante por defecto (`principal.tudominio.com`). Sus meseros y su cocina deben usar esa dirección.
+- Sin `PLATFORM_HOST` ni `ROOT_DOMAIN` (instalación de un solo restaurante), `/` sigue siendo el punto de venta.
 
 ## Plataforma (`/plataforma`)
 
@@ -127,4 +134,4 @@ Ejemplo con `ristemo.com`; cambia por tu dominio.
 3. **Dominios en Coolify** — elige una forma:
    - **Simple (pocos restaurantes):** en *Domains* de la aplicación agrega cada restaurante separado por coma: `https://ristemo.com,https://elfogon.ristemo.com,https://laesquina.ristemo.com`, y vuelve a desplegar. Coolify saca un certificado por cada uno sin configurar nada más. La página de cada restaurante en la plataforma te muestra la dirección exacta para copiar.
    - **Comodín (muchos restaurantes):** agrega `https://*.ristemo.com` una sola vez. El certificado comodín de Let's Encrypt exige el reto por DNS: en *Servers → Proxy* configura Traefik con el proveedor DNS de tu dominio (por ejemplo, Cloudflare con un token de API) según la guía de Coolify para *wildcard certificates*. Con eso los restaurantes nuevos funcionan sin volver a desplegar.
-4. Crea el restaurante en `/plataforma` y prueba su dirección. El restaurante que ya existía sigue abriendo en el dominio principal.
+4. Crea el restaurante en `/plataforma` y prueba su dirección. El restaurante que ya existía pasa a su subdominio (`principal.ristemo.com`): agrégalo en *Domains* si no usas el comodín. El dominio principal muestra la página de venta.
