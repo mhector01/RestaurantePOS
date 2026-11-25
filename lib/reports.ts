@@ -35,7 +35,7 @@ function estimateCosts<T extends CostLine>(lines: T[]) {
 
 export async function salesSummary(period: Period) {
   const [payments, prevPayments, lines, prevLines] = await Promise.all([
-    prisma.payment.findMany({ where: { createdAt: { gte: period.start, lt: period.end } }, select: { amount: true, tip: true, method: true, cardAmount: true, orderId: true, createdAt: true } }),
+    prisma.payment.findMany({ where: { createdAt: { gte: period.start, lt: period.end } }, select: { amount: true, tip: true, method: true, cardAmount: true, mixedWith: true, orderId: true, createdAt: true } }),
     prisma.payment.findMany({ where: { createdAt: { gte: period.prevStart, lt: period.prevEnd } }, select: { amount: true, orderId: true } }),
     prisma.saleLine.findMany({ where: { createdAt: { gte: period.start, lt: period.end } } }),
     prisma.saleLine.aggregate({ where: { createdAt: { gte: period.prevStart, lt: period.prevEnd } }, _sum: { quantity: true } }),
@@ -83,11 +83,12 @@ export async function salesSummary(period: Period) {
   const WEEK = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
   const weekdays = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ key: String(d), label: WEEK[d].slice(0, 3), long: WEEK[d], value: round2(byWeekday[d]) }));
 
-  const methods = { CASH: 0, CARD: 0 } as Record<string, number>;
+  const methods = { CASH: 0, CARD: 0, TRANSFER: 0 } as Record<string, number>;
   for (const p of payments) {
     const split = paymentSplit(p);
     methods.CASH += split.cash;
     methods.CARD += split.card;
+    methods.TRANSFER += split.transfer;
   }
 
   const channel = { MESA: 0, LLEVAR: 0 } as Record<string, number>;
@@ -358,14 +359,15 @@ export async function discountSummary(period: Period) {
 export async function tipSummary(period: Period) {
   const rows = await prisma.payment.findMany({
     where: { createdAt: { gte: period.start, lt: period.end }, tip: { gt: 0 } },
-    select: { tip: true, amount: true, method: true, cardAmount: true, order: { select: { user: { select: { name: true } } } } },
+    select: { tip: true, amount: true, method: true, cardAmount: true, mixedWith: true, order: { select: { user: { select: { name: true } } } } },
   });
   const byWaiter = new Map<string, { count: number; amount: number; sales: number }>();
   let cash = 0;
   let card = 0;
   for (const p of rows) {
     const split = paymentSplit(p);
-    card += split.tipCard;
+    // Las de tarjeta y transferencia hay que entregarlas en efectivo: van juntas
+    card += split.tipCard + split.tipTransfer;
     cash += split.tipCash;
     const name = p.order.user?.name ?? "Sin asignar";
     const w = byWaiter.get(name) ?? { count: 0, amount: 0, sales: 0 };

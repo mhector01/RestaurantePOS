@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Banknote, CreditCard, HandCoins, Receipt, TrendingUp, Trophy, Wallet } from "lucide-react";
+import { Banknote, CreditCard, HandCoins, Landmark, Receipt, TrendingUp, Trophy, Wallet } from "lucide-react";
 import prisma from "@/lib/prisma";
 import { PrintAndCloseButton } from "@/components/PrintAndCloseButton";
 import { PageHeader } from "@/components/admin/AdminNav";
@@ -29,6 +29,7 @@ export default async function ReportesPage() {
 
   let totalCash = 0;
   let totalCard = 0;
+  let totalTransfer = 0;
   let totalRevenue = 0;
   // Propinas: no son venta; se cuentan aparte para cuadrar el cajón y entregarlas al personal
   let tipsCash = 0;
@@ -41,8 +42,10 @@ export default async function ReportesPage() {
       const split = paymentSplit(p);
       totalCash += split.cash;
       totalCard += split.card;
+      totalTransfer += split.transfer;
       tipsCash += split.tipCash;
-      tipsCard += split.tipCard;
+      // Propinas por tarjeta o transferencia: no están en el cajón, se entregan en efectivo
+      tipsCard += split.tipCard + split.tipTransfer;
       if (p.tip > 0) {
         const who = order.user?.name ?? "Sin asignar";
         tipsByWaiter[who] = (tipsByWaiter[who] ?? 0) + p.tip;
@@ -89,6 +92,12 @@ export default async function ReportesPage() {
           <span>Tarjeta</span>
           <span>{formatMoney(totalCard)}</span>
         </div>
+        {totalTransfer > 0 && (
+          <div className="flex justify-between">
+            <span>Transferencia</span>
+            <span>{formatMoney(totalTransfer)}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span>Cuentas cobradas</span>
           <span>{totalOrders}</span>
@@ -102,7 +111,7 @@ export default async function ReportesPage() {
               <span>{formatMoney(tipsCash)}</span>
             </div>
             <div className="flex justify-between">
-              <span>Con tarjeta</span>
+              <span>Tarjeta / transf.</span>
               <span>{formatMoney(tipsCard)}</span>
             </div>
             {Object.entries(tipsByWaiter).map(([name, amount]) => (
@@ -165,10 +174,11 @@ export default async function ReportesPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", totalTransfer > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
           <Card label="Total vendido" value={formatMoney(totalRevenue)} Icon={TrendingUp} tone="dark" />
           <Card label="Efectivo en caja" value={formatMoney(totalCash)} Icon={Banknote} tone="green" />
           <Card label="Tarjeta" value={formatMoney(totalCard)} Icon={CreditCard} tone="blue" />
+          {totalTransfer > 0 && <Card label="Transferencia" value={formatMoney(totalTransfer)} Icon={Landmark} tone="blue" />}
           <Card label="Cuentas cobradas" value={String(totalOrders)} sub={`Promedio ${formatMoney(avg)}`} Icon={Receipt} />
         </div>
 
@@ -181,7 +191,7 @@ export default async function ReportesPage() {
             </div>
             <p className="text-sm text-muted-foreground mb-3">
               No son venta ni llevan ISV. En efectivo: {formatMoney(tipsCash)} (ya están en el cajón: hay {formatMoney(totalCash + tipsCash)} en
-              total{cashOut > 0 && `, antes de los gastos pagados de la caja`}). Con tarjeta: {formatMoney(tipsCard)} (hay que entregarlas en efectivo).
+              total{cashOut > 0 && `, antes de los gastos pagados de la caja`}). Con tarjeta o transferencia: {formatMoney(tipsCard)} (hay que entregarlas en efectivo).
             </p>
             <ul className="divide-y rounded-xl border">
               {Object.entries(tipsByWaiter)

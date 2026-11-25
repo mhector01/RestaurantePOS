@@ -40,6 +40,7 @@ export async function GET(request: Request) {
       ["Ticket promedio", s.avg],
       ["Efectivo", s.methods.CASH],
       ["Tarjeta", s.methods.CARD],
+      ["Transferencia", s.methods.TRANSFER ?? 0],
       ["En mesa", s.channel.MESA ?? 0],
       ["Para llevar", s.channel.LLEVAR ?? 0],
       [],

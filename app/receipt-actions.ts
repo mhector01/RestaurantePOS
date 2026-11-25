@@ -31,6 +31,8 @@ export async function getPaymentReprint(paymentId: number): Promise<TicketPaymen
     amount: p.amount,
     method: p.method,
     cardAmount: p.cardAmount,
+    mixedWith: p.mixedWith,
+    reference: p.reference,
     createdAt: p.createdAt,
     tip: p.tip,
     order: {

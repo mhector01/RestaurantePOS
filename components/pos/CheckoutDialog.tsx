@@ -4,7 +4,7 @@ import { printWhenReady } from "@/lib/print";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Banknote, Check, CreditCard, FileText, Loader2, Minus, Plus, Printer, Split } from "lucide-react";
+import { AlertTriangle, Banknote, Check, CreditCard, FileText, Landmark, Loader2, Minus, Plus, Printer, Split } from "lucide-react";
 import { processFullPayment, processProductPayment } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,10 +17,10 @@ import { DiscountPanel, previewDiscount, type PaidLine } from "./DiscountPanel";
 import type { DiscountInput, DiscountRules } from "@/lib/discounts";
 import { computeTip, type TipInput, type TipRules } from "@/lib/tips";
 import { callAction } from "@/lib/client-action";
-import { mixedDetail } from "@/lib/payments";
+import { paymentText } from "@/lib/payments";
 
 type Mode = "full" | "split";
-type Method = "CASH" | "CARD" | "MIXED";
+type Method = "CASH" | "CARD" | "TRANSFER" | "MIXED";
 
 interface Props {
   open: boolean;
@@ -72,6 +72,8 @@ export function CheckoutDialog({
   const [received, setReceived] = useState("");
   // Pago mixto: lo que se pasa con tarjeta; el resto se cobra en efectivo
   const [cardPart, setCardPart] = useState("");
+  const [mixedWith, setMixedWith] = useState<"CARD" | "TRANSFER">("CARD");
+  const [reference, setReference] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Paid | null>(null);
   const [discount, setDiscount] = useState<DiscountInput | null>(null);
@@ -93,6 +95,8 @@ export function CheckoutDialog({
       setQty({});
       setReceived("");
       setCardPart("");
+      setMixedWith("CARD");
+      setReference("");
       setResult(null);
       setPaidInfo(null);
       setWithRtn(false);
@@ -129,7 +133,9 @@ export function CheckoutDialog({
   const cardNum = Math.round((parseFloat(cardPart) || 0) * 100) / 100;
   const mixedInvalid = method === "MIXED" && !(cardNum > 0 && cardNum < total);
   // Lo que se cobra en efectivo: todo, o en mixto lo que no va con tarjeta
-  const cashDue = method === "CARD" ? 0 : method === "MIXED" ? Math.round((total - cardNum) * 100) / 100 : total;
+  const otherLabel = mixedWith === "TRANSFER" ? "Transferencia" : "Tarjeta";
+  const usesTransfer = method === "TRANSFER" || (method === "MIXED" && mixedWith === "TRANSFER");
+  const cashDue = method === "CARD" || method === "TRANSFER" ? 0 : method === "MIXED" ? Math.round((total - cardNum) * 100) / 100 : total;
   const receivedNum = parseFloat(received) || 0;
   const change = cashDue > 0 && receivedNum > 0 ? receivedNum - cashDue : 0;
   const insufficient = cashDue > 0 && receivedNum > 0 && receivedNum < cashDue;
@@ -145,8 +151,12 @@ export function CheckoutDialog({
     if (discountBlocked) return toast.error(preview?.error ?? "Falta el PIN del encargado para el descuento");
     if (withRtn && (rtnInvalid || !normalizeRtn(rtn))) return toast.error("El RTN debe tener 14 dígitos");
     if (missingName) return toast.error("Escribe el nombre o razón social del cliente");
-    if (mixedInvalid) return toast.error(`Escribe cuánto va con tarjeta (menos de ${formatMoney(total)})`);
-    const card = method === "MIXED" ? cardNum : null;
+    if (mixedInvalid) return toast.error(`Escribe cuánto va con ${otherLabel.toLowerCase()} (menos de ${formatMoney(total)})`);
+    const card = {
+      cardAmount: method === "MIXED" ? cardNum : null,
+      mixedWith: method === "MIXED" ? mixedWith : null,
+      reference: usesTransfer ? reference : null,
+    };
     const customer = withRtn ? { rtn, name: customerName } : undefined;
     setLoading(true);
     try {
@@ -210,7 +220,7 @@ export function CheckoutDialog({
             <DialogDescription className="mt-1">
               {formatMoney(result.amount)}
               {(result.tip ?? 0) > 0 && ` + propina ${formatMoney(result.tip ?? 0)}`} ·{" "}
-              {result.method === "MIXED" ? mixedDetail(result, formatMoney) : (PAYMENT_LABEL[result.method] ?? result.method)}
+              {paymentText(result, formatMoney, PAYMENT_LABEL)}
             </DialogDescription>
             {result.invoice && (
               <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-sm font-medium tabular">
@@ -383,11 +393,12 @@ export function CheckoutDialog({
               {/* Método de pago */}
               <div className="space-y-2">
                 <p className="text-sm font-medium">Método de pago</p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {(
                     [
                       { id: "CASH", label: "Efectivo", Icon: Banknote },
                       { id: "CARD", label: "Tarjeta", Icon: CreditCard },
+                      { id: "TRANSFER", label: "Transferencia", Icon: Landmark },
                       { id: "MIXED", label: "Mixto", Icon: Split },
                     ] as const
                   ).map(({ id, label, Icon }) => (
@@ -399,18 +410,38 @@ export function CheckoutDialog({
                         setReceived("");
                       }}
                       className={cn(
-                        "h-14 rounded-xl border-2 flex items-center justify-center gap-2 font-medium transition-all",
+                        "h-14 rounded-xl border-2 flex items-center justify-center gap-2 font-medium transition-all px-3",
                         method === id ? "border-primary bg-accent text-accent-foreground" : "hover:bg-muted"
                       )}
                     >
-                      <Icon className="size-5" /> {label}
+                      <Icon className="size-5 shrink-0" /> {label}
                     </button>
                   ))}
                 </div>
                 {method === "MIXED" && (
                   <div className="rounded-2xl border p-3 space-y-2">
-                    <label htmlFor="card-part" className="text-sm font-medium">
-                      ¿Cuánto paga con tarjeta?
+                    <div className="grid grid-cols-2 rounded-xl bg-muted p-1">
+                      {(
+                        [
+                          { value: "CARD", label: "Efectivo + tarjeta" },
+                          { value: "TRANSFER", label: "Efectivo + transferencia" },
+                        ] as const
+                      ).map((o) => (
+                        <button
+                          key={o.value}
+                          type="button"
+                          onClick={() => setMixedWith(o.value)}
+                          className={cn(
+                            "h-10 rounded-lg text-sm font-medium transition-all",
+                            mixedWith === o.value ? "bg-card shadow-sm" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                    <label htmlFor="card-part" className="text-sm font-medium block">
+                      ¿Cuánto paga con {otherLabel.toLowerCase()}?
                     </label>
                     <input
                       id="card-part"
@@ -432,12 +463,21 @@ export function CheckoutDialog({
                     ) : (
                       cardNum > 0 && (
                         <p className="text-sm text-muted-foreground tabular">
-                          Tarjeta <span className="font-semibold text-foreground">{formatMoney(cardNum)}</span> · Efectivo{" "}
+                          {otherLabel} <span className="font-semibold text-foreground">{formatMoney(cardNum)}</span> · Efectivo{" "}
                           <span className="font-semibold text-foreground">{formatMoney(cashDue)}</span>
                         </p>
                       )
                     )}
                   </div>
+                )}
+                {usesTransfer && (
+                  <input
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value.slice(0, 60))}
+                    placeholder="Referencia de la transferencia (opcional)"
+                    aria-label="Referencia de la transferencia"
+                    className="w-full h-11 rounded-xl border bg-card px-3 tabular outline-none focus:border-primary"
+                  />
                 )}
               </div>
 

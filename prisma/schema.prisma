@@ -253,8 +253,10 @@ model Payment {
   amount       Float // Monto cobrado (ya con el descuento)
   discount     Float             @default(0) // Descuento aplicado en este cobro (con ISV)
   tip          Float             @default(0) // Propina voluntaria aceptada por el cliente (no es venta ni lleva ISV)
-  method       String // CASH, CARD o MIXED (parte efectivo y parte tarjeta)
-  cardAmount   Float             @default(0) // MIXED: lo pagado con tarjeta (consumo + propina); el resto fue en efectivo
+  method       String // CASH, CARD, TRANSFER o MIXED (parte en efectivo y parte con tarjeta o transferencia)
+  cardAmount   Float             @default(0) // MIXED: lo que no fue en efectivo (consumo + propina)
+  mixedWith    String            @default("CARD") // MIXED: CARD o TRANSFER
+  reference    String            @default("") // Transferencia: número o referencia del comprobante
   invoices     Invoice[]
   saleLines    SaleLine[]
   discounts    PaymentDiscount[]

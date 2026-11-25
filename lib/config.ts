@@ -33,5 +33,6 @@ export function formatElapsed(date: Date | string) {
 export const PAYMENT_LABEL: Record<string, string> = {
   CASH: "Efectivo",
   CARD: "Tarjeta",
-  MIXED: "Efectivo y tarjeta",
+  TRANSFER: "Transferencia",
+  MIXED: "Pago mixto",
 };

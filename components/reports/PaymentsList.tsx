@@ -10,7 +10,7 @@ import { PAYMENT_LABEL, formatMoney } from "@/lib/config";
 import { TicketPrint, type TicketPayment } from "@/components/TicketPrint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { mixedDetail } from "@/lib/payments";
+import { paymentText } from "@/lib/payments";
 
 export interface PaymentRow {
   id: number;
@@ -24,6 +24,8 @@ export interface PaymentRow {
   discountLabel: string | null;
   method: string;
   cardAmount: number;
+  mixedWith: string;
+  reference: string;
   invoiceNumber: string | null;
   invoiceVoid: boolean;
 }
@@ -43,7 +45,7 @@ export function PaymentsList({ rows, truncated }: { rows: PaymentRow[]; truncate
       if (filter === "invoice" && !r.invoiceNumber) return false;
       if (filter === "receipt" && r.invoiceNumber) return false;
       if (!q) return true;
-      return [r.place, r.customer, r.waiter, r.invoiceNumber, `#${r.id}`, String(r.id)].some((v) => v?.toLowerCase().includes(q));
+      return [r.place, r.customer, r.waiter, r.invoiceNumber, r.reference, `#${r.id}`, String(r.id)].some((v) => v?.toLowerCase().includes(q));
     });
   }, [rows, query, filter]);
 
@@ -153,7 +155,7 @@ export function PaymentsList({ rows, truncated }: { rows: PaymentRow[]; truncate
               <div className="text-right shrink-0">
                 <p className="font-semibold tabular">{formatMoney(r.amount)}</p>
                 <p className="text-xs text-muted-foreground">
-                  {r.method === "MIXED" ? mixedDetail(r, formatMoney) : (PAYMENT_LABEL[r.method] ?? r.method)}
+                  {paymentText(r, formatMoney, PAYMENT_LABEL)}
                   {r.tip > 0 && ` · +${formatMoney(r.tip)} propina`}
                 </p>
               </div>

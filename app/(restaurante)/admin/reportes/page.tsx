@@ -51,6 +51,7 @@ export default async function VentasReportPage({ searchParams }: { searchParams:
               parts={[
                 { label: "Efectivo", value: s.methods.CASH, color: "var(--series-3)" },
                 { label: "Tarjeta", value: s.methods.CARD, color: "var(--series-1)" },
+                { label: "Transferencia", value: s.methods.TRANSFER ?? 0, color: "var(--series-4)" },
               ]}
             />
           </Panel>
@@ -115,7 +116,7 @@ export default async function VentasReportPage({ searchParams }: { searchParams:
           title="Propinas"
           description={
             tips.count
-              ? `${formatMoney(tips.total)} en ${tips.count} cobro${tips.count === 1 ? "" : "s"} · efectivo ${formatMoney(tips.cash)} · tarjeta ${formatMoney(tips.card)}. No son venta ni llevan ISV.`
+              ? `${formatMoney(tips.total)} en ${tips.count} cobro${tips.count === 1 ? "" : "s"} · efectivo ${formatMoney(tips.cash)} · tarjeta o transferencia ${formatMoney(tips.card)}. No son venta ni llevan ISV.`
               : "Ningún cliente dejó propina en este periodo."
           }
         >

@@ -398,12 +398,21 @@ async function currentWaiterName() {
  * Primero se calcula y se valida todo (incluido el PIN del encargado); solo si todo está bien
  * se toca la cuenta, se registra el pago, se descuenta el inventario y se emite la factura.
  */
+export interface PayExtra {
+  /** Pago mixto: lo que no va en efectivo (consumo + propina). */
+  cardAmount?: number | null;
+  /** Pago mixto: la otra forma de pago (CARD o TRANSFER). */
+  mixedWith?: string | null;
+  /** Transferencia: número o referencia del comprobante. */
+  reference?: string | null;
+}
+
 async function chargePayment(input: {
   orderId: number;
   mesaId: number;
   method: string;
-  /** Pago mixto: lo que se pasa con tarjeta (consumo + propina); el resto es efectivo. */
-  cardAmount?: number | null;
+  /** Pago mixto (lo que no va en efectivo y con qué) o referencia de la transferencia. */
+  extra?: PayExtra | null;
   customer?: InvoiceCustomer;
   discount?: DiscountInput | null;
   /** Propina voluntaria que aceptó el cliente (null = no quiso). */
@@ -442,19 +451,24 @@ async function chargePayment(input: {
   // La propina va aparte: no es venta, no lleva ISV y no entra a los importes de la factura
   const tip = (await tipRules()).enabled ? computeTip(amount, input.tip) : 0;
 
-  const method = input.method === "CARD" || input.method === "MIXED" ? input.method : "CASH";
+  const method = ["CARD", "TRANSFER", "MIXED"].includes(input.method) ? input.method : "CASH";
   let cardAmount = 0;
+  const mixedWith = method === "MIXED" && input.extra?.mixedWith === "TRANSFER" ? "TRANSFER" : "CARD";
   if (method === "MIXED") {
     const paid = Math.round((amount + tip) * 100) / 100;
-    cardAmount = Math.round(Number(input.cardAmount ?? 0) * 100) / 100;
+    cardAmount = Math.round(Number(input.extra?.cardAmount ?? 0) * 100) / 100;
     if (!(cardAmount > 0) || cardAmount >= paid) {
-      return { error: `En pago mixto, lo de tarjeta debe ser más de 0 y menos de ${paid.toFixed(2)}` };
+      const what = mixedWith === "TRANSFER" ? "transferencia" : "tarjeta";
+      return { error: `En pago mixto, lo de ${what} debe ser más de 0 y menos de ${paid.toFixed(2)}` };
     }
   }
+  // Referencia del comprobante de la transferencia (opcional)
+  const usesTransfer = method === "TRANSFER" || (method === "MIXED" && mixedWith === "TRANSFER");
+  const reference = usesTransfer ? String(input.extra?.reference ?? "").replace(/\s+/g, " ").trim().slice(0, 60) : "";
 
   await input.consume();
   const payment = await prisma.payment.create({
-    data: { orderId: input.orderId, amount, discount: applied.gross, tip, method, cardAmount },
+    data: { orderId: input.orderId, amount, discount: applied.gross, tip, method, cardAmount, mixedWith, reference },
     include: { order: { include: { table: true } } },
   });
   if (resolved) {
@@ -526,7 +540,7 @@ export async function processProductPayment(
   customer?: InvoiceCustomer,
   discount?: DiscountInput | null,
   tip?: TipInput | null,
-  cardAmount?: number | null
+  extra?: PayExtra | null
 ) {
   const charged: (Charged & { remaining: number })[] = [];
   for (const req of itemsToPay) {
@@ -553,7 +567,7 @@ export async function processProductPayment(
     orderId,
     mesaId,
     method,
-    cardAmount,
+    extra,
     customer,
     discount,
     tip,
@@ -577,7 +591,7 @@ export async function processFullPayment(
   customer?: InvoiceCustomer,
   discount?: DiscountInput | null,
   tip?: TipInput | null,
-  cardAmount?: number | null
+  extra?: PayExtra | null
 ) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -589,7 +603,7 @@ export async function processFullPayment(
     orderId,
     mesaId,
     method,
-    cardAmount,
+    extra,
     customer,
     discount,
     tip,
@@ -625,11 +639,13 @@ export async function getDailySales() {
 
   const efectivo = pagos.reduce((s, p) => s + paymentSplit(p).cash, 0);
   const tarjeta = pagos.reduce((s, p) => s + paymentSplit(p).card, 0);
+  const transferencia = pagos.reduce((s, p) => s + paymentSplit(p).transfer, 0);
 
   return {
-    total: efectivo + tarjeta,
+    total: efectivo + tarjeta + transferencia,
     efectivo,
     tarjeta,
+    transferencia,
     transacciones: pagos.length,
   };
 }

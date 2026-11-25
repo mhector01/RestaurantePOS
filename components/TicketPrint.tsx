@@ -6,7 +6,7 @@ import { useBusiness } from "@/components/BusinessProvider";
 import { formatRtn } from "@/lib/fiscal";
 import { InvoiceBody } from "@/components/InvoicePrint";
 import type { InvoiceView } from "@/lib/fiscal";
-import { mixedDetail } from "@/lib/payments";
+import { paymentText } from "@/lib/payments";
 
 export interface TicketPayment {
   id: number;
@@ -14,6 +14,10 @@ export interface TicketPayment {
   method: string;
   /** Pago mixto: lo pagado con tarjeta (consumo + propina). */
   cardAmount?: number;
+  /** Pago mixto: CARD o TRANSFER. */
+  mixedWith?: string;
+  /** Transferencia: referencia del comprobante. */
+  reference?: string;
   createdAt: string | Date;
   order: {
     id?: number;
@@ -59,7 +63,7 @@ export function TicketPrint({
           received={received}
           change={change}
           copy={copy}
-          paymentDetail={payment.method === "MIXED" ? mixedDetail(payment, formatMoney) : undefined}
+          paymentDetail={payment.method === "MIXED" || payment.reference ? paymentText(payment, formatMoney, PAYMENT_LABEL) : undefined}
         />
       </div>,
       document.body
@@ -137,7 +141,7 @@ export function TicketPrint({
         </div>
       )}
       <p className="mt-1">Pago: {PAYMENT_LABEL[payment.method] ?? payment.method}</p>
-      {payment.method === "MIXED" && <p>{mixedDetail(payment, formatMoney)}</p>}
+      {(payment.method === "MIXED" || payment.reference) && <p>{paymentText(payment, formatMoney, PAYMENT_LABEL)}</p>}
       {received !== undefined && received > 0 && (
         <>
           <p>Recibido: {formatMoney(received)}</p>
