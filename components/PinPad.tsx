@@ -76,8 +76,12 @@ export function PinPad({
     return () => window.removeEventListener("keydown", onKey);
   }, [press, back]);
 
-  const keyClass =
-    "h-16 sm:h-[4.5rem] rounded-2xl text-2xl font-semibold transition-all active:scale-95 select-none disabled:opacity-40";
+  // Las teclas se achican según el alto disponible (celular bajo, tablet acostada) para que
+  // todo quepa sin desplazar la pantalla
+  const keyClass = cn(
+    "rounded-2xl text-2xl font-semibold transition-all active:scale-95 select-none disabled:opacity-40",
+    variant === "screen" ? "h-[clamp(3rem,9dvh,4.5rem)]" : "h-16"
+  );
 
   const pad = (
     <div className="w-full max-w-xs mx-auto flex flex-col items-center">
@@ -86,7 +90,7 @@ export function PinPad({
         {subtitle}
       </p>
 
-      <div className={cn("flex gap-4 my-7", error && "animate-[shake_0.35s]")}>
+      <div className={cn("flex gap-4", variant === "screen" ? "my-[clamp(1rem,3.5dvh,1.75rem)]" : "my-7", error && "animate-[shake_0.35s]")}>
         {[0, 1, 2, 3].map((i) => (
           <span
             key={i}
@@ -113,7 +117,7 @@ export function PinPad({
         ) : null}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 w-full">
+      <div className={cn("grid grid-cols-3 w-full", variant === "screen" ? "gap-[clamp(0.5rem,1.6dvh,0.75rem)]" : "gap-3")}>
         {KEYS.map((n) => (
           <button
             key={n}
@@ -160,7 +164,9 @@ export function PinPad({
   if (variant === "inline") return pad;
 
   return (
-    <div className="min-h-dvh bg-ink-950 flex flex-col p-4">
+    // Alto fijo de la pantalla: no se desplaza ni "rebota" (solo si de verdad no cabe, como un
+    // celular acostado, permite desplazar para no cortar teclas)
+    <div className="h-dvh overflow-y-auto overscroll-none bg-ink-950 flex flex-col p-4">
       {lockScreen ? (
         <div className="flex justify-end gap-2">
           <Link
@@ -184,8 +190,8 @@ export function PinPad({
           <ArrowLeft className="size-5" /> Volver a mesas
         </Link>
       )}
-      <div className="flex-1 flex flex-col items-center justify-center gap-8 pb-10">
-        <BrandLogo className="h-12 sm:h-14" priority />
+      <div className="flex-1 flex flex-col items-center justify-center gap-[clamp(0.75rem,4dvh,2rem)] pb-[clamp(0.5rem,4dvh,2.5rem)]">
+        <BrandLogo className="h-[clamp(2.25rem,7dvh,3.5rem)] w-auto shrink-0" priority />
         {pad}
       </div>
     </div>
