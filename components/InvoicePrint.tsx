@@ -12,8 +12,11 @@ export function InvoiceBody({
   received,
   change,
   copy,
+  paymentDetail,
 }: {
   invoice: InvoiceView;
+  /** Pago mixto: cuánto fue en efectivo y cuánto con tarjeta. */
+  paymentDetail?: string;
   received?: number;
   change?: number;
   copy?: boolean;
@@ -118,6 +121,7 @@ export function InvoiceBody({
         </div>
       )}
       <p>Pago: {PAYMENT_LABEL[invoice.method] ?? invoice.method}</p>
+      {paymentDetail && <p>{paymentDetail}</p>}
       {received !== undefined && received > 0 && (
         <>
           <p>Recibido: {formatMoney(received)}</p>

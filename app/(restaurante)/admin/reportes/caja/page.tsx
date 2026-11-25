@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/admin/AdminNav";
 import { formatMoney } from "@/lib/config";
 import { getBusiness } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
+import { paymentSplit } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -36,13 +37,12 @@ export default async function ReportesPage() {
   for (const order of ordenesPagadas) {
     for (const p of order.payments) {
       totalRevenue += p.amount;
-      if (p.method.toUpperCase() === "CARD") {
-        totalCard += p.amount;
-        tipsCard += p.tip;
-      } else {
-        totalCash += p.amount;
-        tipsCash += p.tip;
-      }
+      // Un pago mixto suma a efectivo y a tarjeta lo que corresponde a cada uno
+      const split = paymentSplit(p);
+      totalCash += split.cash;
+      totalCard += split.card;
+      tipsCash += split.tipCash;
+      tipsCard += split.tipCard;
       if (p.tip > 0) {
         const who = order.user?.name ?? "Sin asignar";
         tipsByWaiter[who] = (tipsByWaiter[who] ?? 0) + p.tip;

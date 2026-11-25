@@ -1,4 +1,5 @@
 "use server";
+import { paymentSplit } from "@/lib/payments";
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
@@ -401,6 +402,8 @@ async function chargePayment(input: {
   orderId: number;
   mesaId: number;
   method: string;
+  /** Pago mixto: lo que se pasa con tarjeta (consumo + propina); el resto es efectivo. */
+  cardAmount?: number | null;
   customer?: InvoiceCustomer;
   discount?: DiscountInput | null;
   /** Propina voluntaria que aceptó el cliente (null = no quiso). */
@@ -439,9 +442,19 @@ async function chargePayment(input: {
   // La propina va aparte: no es venta, no lleva ISV y no entra a los importes de la factura
   const tip = (await tipRules()).enabled ? computeTip(amount, input.tip) : 0;
 
+  const method = input.method === "CARD" || input.method === "MIXED" ? input.method : "CASH";
+  let cardAmount = 0;
+  if (method === "MIXED") {
+    const paid = Math.round((amount + tip) * 100) / 100;
+    cardAmount = Math.round(Number(input.cardAmount ?? 0) * 100) / 100;
+    if (!(cardAmount > 0) || cardAmount >= paid) {
+      return { error: `En pago mixto, lo de tarjeta debe ser más de 0 y menos de ${paid.toFixed(2)}` };
+    }
+  }
+
   await input.consume();
   const payment = await prisma.payment.create({
-    data: { orderId: input.orderId, amount, discount: applied.gross, tip, method: input.method },
+    data: { orderId: input.orderId, amount, discount: applied.gross, tip, method, cardAmount },
     include: { order: { include: { table: true } } },
   });
   if (resolved) {
@@ -468,7 +481,7 @@ async function chargePayment(input: {
   const { invoice, warning: invoiceWarning } = await issueInvoice({
     paymentId: payment.id,
     orderId: input.orderId,
-    method: input.method,
+    method,
     lines: applied.invoiceLines,
     customer,
     discountNet: applied.net,
@@ -512,7 +525,8 @@ export async function processProductPayment(
   method: string,
   customer?: InvoiceCustomer,
   discount?: DiscountInput | null,
-  tip?: TipInput | null
+  tip?: TipInput | null,
+  cardAmount?: number | null
 ) {
   const charged: (Charged & { remaining: number })[] = [];
   for (const req of itemsToPay) {
@@ -539,6 +553,7 @@ export async function processProductPayment(
     orderId,
     mesaId,
     method,
+    cardAmount,
     customer,
     discount,
     tip,
@@ -561,7 +576,8 @@ export async function processFullPayment(
   method: string,
   customer?: InvoiceCustomer,
   discount?: DiscountInput | null,
-  tip?: TipInput | null
+  tip?: TipInput | null,
+  cardAmount?: number | null
 ) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -573,6 +589,7 @@ export async function processFullPayment(
     orderId,
     mesaId,
     method,
+    cardAmount,
     customer,
     discount,
     tip,
@@ -606,8 +623,8 @@ export async function getDailySales() {
 
   const pagos = await prisma.payment.findMany({ where: { createdAt: { gte: hoy } } });
 
-  const efectivo = pagos.filter((p) => p.method === "CASH").reduce((s, p) => s + p.amount, 0);
-  const tarjeta = pagos.filter((p) => p.method === "CARD").reduce((s, p) => s + p.amount, 0);
+  const efectivo = pagos.reduce((s, p) => s + paymentSplit(p).cash, 0);
+  const tarjeta = pagos.reduce((s, p) => s + paymentSplit(p).card, 0);
 
   return {
     total: efectivo + tarjeta,

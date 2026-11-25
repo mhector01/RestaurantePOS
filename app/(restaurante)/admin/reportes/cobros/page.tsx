@@ -33,6 +33,7 @@ export default async function CobrosPage({ searchParams }: { searchParams: Promi
       discount: p.discount,
       discountLabel: p.discounts[0]?.label ?? null,
       method: p.method,
+      cardAmount: p.cardAmount,
       invoiceNumber: invoice?.number ?? null,
       invoiceVoid: invoice?.status === "VOID",
     };

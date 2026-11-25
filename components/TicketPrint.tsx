@@ -6,11 +6,14 @@ import { useBusiness } from "@/components/BusinessProvider";
 import { formatRtn } from "@/lib/fiscal";
 import { InvoiceBody } from "@/components/InvoicePrint";
 import type { InvoiceView } from "@/lib/fiscal";
+import { mixedDetail } from "@/lib/payments";
 
 export interface TicketPayment {
   id: number;
   amount: number;
   method: string;
+  /** Pago mixto: lo pagado con tarjeta (consumo + propina). */
+  cardAmount?: number;
   createdAt: string | Date;
   order: {
     id?: number;
@@ -51,7 +54,13 @@ export function TicketPrint({
     const reference = mesa === 0 ? `Para llevar · Pedido #${payment.order.id ?? ""}` : `Mesa ${mesa}`;
     return createPortal(
       <div className="print-area hidden print:block">
-        <InvoiceBody invoice={{ ...payment.invoice, reference }} received={received} change={change} copy={copy} />
+        <InvoiceBody
+          invoice={{ ...payment.invoice, reference }}
+          received={received}
+          change={change}
+          copy={copy}
+          paymentDetail={payment.method === "MIXED" ? mixedDetail(payment, formatMoney) : undefined}
+        />
       </div>,
       document.body
     );
@@ -128,6 +137,7 @@ export function TicketPrint({
         </div>
       )}
       <p className="mt-1">Pago: {PAYMENT_LABEL[payment.method] ?? payment.method}</p>
+      {payment.method === "MIXED" && <p>{mixedDetail(payment, formatMoney)}</p>}
       {received !== undefined && received > 0 && (
         <>
           <p>Recibido: {formatMoney(received)}</p>

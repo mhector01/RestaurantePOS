@@ -4,7 +4,7 @@ import { printWhenReady } from "@/lib/print";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Banknote, Check, CreditCard, FileText, Loader2, Minus, Plus, Printer } from "lucide-react";
+import { AlertTriangle, Banknote, Check, CreditCard, FileText, Loader2, Minus, Plus, Printer, Split } from "lucide-react";
 import { processFullPayment, processProductPayment } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,9 +17,10 @@ import { DiscountPanel, previewDiscount, type PaidLine } from "./DiscountPanel";
 import type { DiscountInput, DiscountRules } from "@/lib/discounts";
 import { computeTip, type TipInput, type TipRules } from "@/lib/tips";
 import { callAction } from "@/lib/client-action";
+import { mixedDetail } from "@/lib/payments";
 
 type Mode = "full" | "split";
-type Method = "CASH" | "CARD";
+type Method = "CASH" | "CARD" | "MIXED";
 
 interface Props {
   open: boolean;
@@ -69,6 +70,8 @@ export function CheckoutDialog({
   const [method, setMethod] = useState<Method>("CASH");
   const [qty, setQty] = useState<Record<number, number>>({});
   const [received, setReceived] = useState("");
+  // Pago mixto: lo que se pasa con tarjeta; el resto se cobra en efectivo
+  const [cardPart, setCardPart] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Paid | null>(null);
   const [discount, setDiscount] = useState<DiscountInput | null>(null);
@@ -89,6 +92,7 @@ export function CheckoutDialog({
       setMethod("CASH");
       setQty({});
       setReceived("");
+      setCardPart("");
       setResult(null);
       setPaidInfo(null);
       setWithRtn(false);
@@ -122,9 +126,13 @@ export function CheckoutDialog({
   const discountBlocked =
     !!discount && (!!preview?.error || (preview?.needsPin && (discount.managerPin ?? "").length !== 4));
 
+  const cardNum = Math.round((parseFloat(cardPart) || 0) * 100) / 100;
+  const mixedInvalid = method === "MIXED" && !(cardNum > 0 && cardNum < total);
+  // Lo que se cobra en efectivo: todo, o en mixto lo que no va con tarjeta
+  const cashDue = method === "CARD" ? 0 : method === "MIXED" ? Math.round((total - cardNum) * 100) / 100 : total;
   const receivedNum = parseFloat(received) || 0;
-  const change = method === "CASH" && receivedNum > 0 ? receivedNum - total : 0;
-  const insufficient = method === "CASH" && receivedNum > 0 && receivedNum < total;
+  const change = cashDue > 0 && receivedNum > 0 ? receivedNum - cashDue : 0;
+  const insufficient = cashDue > 0 && receivedNum > 0 && receivedNum < cashDue;
 
   const setLine = (id: number, max: number, value: number) =>
     setQty((p) => ({ ...p, [id]: Math.max(0, Math.min(max, value)) }));
@@ -137,12 +145,14 @@ export function CheckoutDialog({
     if (discountBlocked) return toast.error(preview?.error ?? "Falta el PIN del encargado para el descuento");
     if (withRtn && (rtnInvalid || !normalizeRtn(rtn))) return toast.error("El RTN debe tener 14 dígitos");
     if (missingName) return toast.error("Escribe el nombre o razón social del cliente");
+    if (mixedInvalid) return toast.error(`Escribe cuánto va con tarjeta (menos de ${formatMoney(total)})`);
+    const card = method === "MIXED" ? cardNum : null;
     const customer = withRtn ? { rtn, name: customerName } : undefined;
     setLoading(true);
     try {
       const res = await callAction(() =>
         mode === "full"
-          ? processFullPayment(orderId, mesaId, method, customer, discount, tipInput)
+          ? processFullPayment(orderId, mesaId, method, customer, discount, tipInput, card)
           : processProductPayment(
               orderId,
               mesaId,
@@ -152,7 +162,8 @@ export function CheckoutDialog({
               method,
               customer,
               discount,
-              tipInput
+              tipInput,
+              card
             )
       );
       if ("error" in res && res.error) {
@@ -198,7 +209,8 @@ export function CheckoutDialog({
             <DialogTitle className="text-xl">Pago registrado</DialogTitle>
             <DialogDescription className="mt-1">
               {formatMoney(result.amount)}
-              {(result.tip ?? 0) > 0 && ` + propina ${formatMoney(result.tip ?? 0)}`} · {PAYMENT_LABEL[result.method] ?? result.method}
+              {(result.tip ?? 0) > 0 && ` + propina ${formatMoney(result.tip ?? 0)}`} ·{" "}
+              {result.method === "MIXED" ? mixedDetail(result, formatMoney) : (PAYMENT_LABEL[result.method] ?? result.method)}
             </DialogDescription>
             {result.invoice && (
               <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-sm font-medium tabular">
@@ -211,7 +223,7 @@ export function CheckoutDialog({
               </p>
             )}
 
-            {paidInfo && paidInfo.received > 0 && method === "CASH" && (
+            {paidInfo && paidInfo.received > 0 && method !== "CARD" && (
               <div className="mt-5 w-full rounded-2xl bg-muted p-4">
                 <p className="text-sm text-muted-foreground">Cambio a entregar</p>
                 <p className="text-4xl font-semibold tabular mt-1">{formatMoney(paidInfo.change)}</p>
@@ -371,17 +383,21 @@ export function CheckoutDialog({
               {/* Método de pago */}
               <div className="space-y-2">
                 <p className="text-sm font-medium">Método de pago</p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {(
                     [
                       { id: "CASH", label: "Efectivo", Icon: Banknote },
                       { id: "CARD", label: "Tarjeta", Icon: CreditCard },
+                      { id: "MIXED", label: "Mixto", Icon: Split },
                     ] as const
                   ).map(({ id, label, Icon }) => (
                     <button
                       key={id}
                       type="button"
-                      onClick={() => setMethod(id)}
+                      onClick={() => {
+                        setMethod(id);
+                        setReceived("");
+                      }}
                       className={cn(
                         "h-14 rounded-xl border-2 flex items-center justify-center gap-2 font-medium transition-all",
                         method === id ? "border-primary bg-accent text-accent-foreground" : "hover:bg-muted"
@@ -391,6 +407,38 @@ export function CheckoutDialog({
                     </button>
                   ))}
                 </div>
+                {method === "MIXED" && (
+                  <div className="rounded-2xl border p-3 space-y-2">
+                    <label htmlFor="card-part" className="text-sm font-medium">
+                      ¿Cuánto paga con tarjeta?
+                    </label>
+                    <input
+                      id="card-part"
+                      inputMode="decimal"
+                      autoFocus
+                      value={cardPart}
+                      onChange={(e) => {
+                        setCardPart(e.target.value.replace(/[^\d.]/g, ""));
+                        setReceived("");
+                      }}
+                      placeholder="0.00"
+                      className={cn(
+                        "w-full h-12 rounded-xl border bg-card px-4 text-lg font-semibold tabular outline-none focus:border-primary focus:ring-3 focus:ring-primary/20",
+                        cardPart !== "" && mixedInvalid && "border-destructive"
+                      )}
+                    />
+                    {cardPart !== "" && mixedInvalid ? (
+                      <p className="text-sm text-destructive">Debe ser menos que el total ({formatMoney(total)})</p>
+                    ) : (
+                      cardNum > 0 && (
+                        <p className="text-sm text-muted-foreground tabular">
+                          Tarjeta <span className="font-semibold text-foreground">{formatMoney(cardNum)}</span> · Efectivo{" "}
+                          <span className="font-semibold text-foreground">{formatMoney(cashDue)}</span>
+                        </p>
+                      )
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Factura a nombre de un cliente con RTN */}
@@ -439,10 +487,11 @@ export function CheckoutDialog({
               )}
 
               {/* Calculadora de cambio */}
-              {method === "CASH" && total > 0 && (
+              {cashDue > 0 && (method === "CASH" || cardNum > 0) && (
                 <div className="space-y-2">
                   <label htmlFor="received" className="text-sm font-medium">
-                    Efectivo recibido <span className="text-muted-foreground font-normal">(opcional)</span>
+                    Efectivo recibido{method === "MIXED" && ` (de ${formatMoney(cashDue)})`}{" "}
+                    <span className="text-muted-foreground font-normal">(opcional)</span>
                   </label>
                   <input
                     id="received"
@@ -453,8 +502,8 @@ export function CheckoutDialog({
                     className="w-full h-12 rounded-xl border bg-card px-4 text-lg font-semibold tabular outline-none focus:border-primary focus:ring-3 focus:ring-primary/20"
                   />
                   <div className="flex flex-wrap gap-2">
-                    <Chip onClick={() => setReceived(total.toFixed(2))}>Exacto</Chip>
-                    {cashSuggestions(total).map((v) => (
+                    <Chip onClick={() => setReceived(cashDue.toFixed(2))}>Exacto</Chip>
+                    {cashSuggestions(cashDue).map((v) => (
                       <Chip key={v} onClick={() => setReceived(String(v))}>
                         {formatMoney(v)}
                       </Chip>
@@ -463,7 +512,7 @@ export function CheckoutDialog({
                   {receivedNum > 0 && (
                     <p className={cn("text-sm font-medium", insufficient ? "text-destructive" : "text-success")}>
                       {insufficient
-                        ? `Faltan ${formatMoney(total - receivedNum)}`
+                        ? `Faltan ${formatMoney(cashDue - receivedNum)}`
                         : `Cambio: ${formatMoney(change)}`}
                     </p>
                   )}
@@ -489,7 +538,7 @@ export function CheckoutDialog({
               </div>
               <Button
                 className="h-12 px-6 rounded-xl text-base"
-                disabled={loading || gross <= 0 || insufficient || discountBlocked}
+                disabled={loading || gross <= 0 || insufficient || discountBlocked || mixedInvalid}
                 onClick={pay}
               >
                 {loading && <Loader2 className="animate-spin" />}

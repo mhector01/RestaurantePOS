@@ -30,6 +30,7 @@ export async function getPaymentReprint(paymentId: number): Promise<TicketPaymen
     id: p.id,
     amount: p.amount,
     method: p.method,
+    cardAmount: p.cardAmount,
     createdAt: p.createdAt,
     tip: p.tip,
     order: {

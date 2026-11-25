@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { expenseCost } from "@/lib/expenses";
+import { paymentSplit } from "@/lib/payments";
 import { bucketKey, buckets, type Period } from "@/lib/period";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -34,7 +35,7 @@ function estimateCosts<T extends CostLine>(lines: T[]) {
 
 export async function salesSummary(period: Period) {
   const [payments, prevPayments, lines, prevLines] = await Promise.all([
-    prisma.payment.findMany({ where: { createdAt: { gte: period.start, lt: period.end } }, select: { amount: true, method: true, orderId: true, createdAt: true } }),
+    prisma.payment.findMany({ where: { createdAt: { gte: period.start, lt: period.end } }, select: { amount: true, tip: true, method: true, cardAmount: true, orderId: true, createdAt: true } }),
     prisma.payment.findMany({ where: { createdAt: { gte: period.prevStart, lt: period.prevEnd } }, select: { amount: true, orderId: true } }),
     prisma.saleLine.findMany({ where: { createdAt: { gte: period.start, lt: period.end } } }),
     prisma.saleLine.aggregate({ where: { createdAt: { gte: period.prevStart, lt: period.prevEnd } }, _sum: { quantity: true } }),
@@ -83,7 +84,11 @@ export async function salesSummary(period: Period) {
   const weekdays = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ key: String(d), label: WEEK[d].slice(0, 3), long: WEEK[d], value: round2(byWeekday[d]) }));
 
   const methods = { CASH: 0, CARD: 0 } as Record<string, number>;
-  for (const p of payments) methods[p.method === "CARD" ? "CARD" : "CASH"] += p.amount;
+  for (const p of payments) {
+    const split = paymentSplit(p);
+    methods.CASH += split.cash;
+    methods.CARD += split.card;
+  }
 
   const channel = { MESA: 0, LLEVAR: 0 } as Record<string, number>;
   const waiters = new Map<string, { total: number; orders: Set<number> }>();
@@ -353,14 +358,15 @@ export async function discountSummary(period: Period) {
 export async function tipSummary(period: Period) {
   const rows = await prisma.payment.findMany({
     where: { createdAt: { gte: period.start, lt: period.end }, tip: { gt: 0 } },
-    select: { tip: true, amount: true, method: true, order: { select: { user: { select: { name: true } } } } },
+    select: { tip: true, amount: true, method: true, cardAmount: true, order: { select: { user: { select: { name: true } } } } },
   });
   const byWaiter = new Map<string, { count: number; amount: number; sales: number }>();
   let cash = 0;
   let card = 0;
   for (const p of rows) {
-    if (p.method.toUpperCase() === "CARD") card += p.tip;
-    else cash += p.tip;
+    const split = paymentSplit(p);
+    card += split.tipCard;
+    cash += split.tipCash;
     const name = p.order.user?.name ?? "Sin asignar";
     const w = byWaiter.get(name) ?? { count: 0, amount: 0, sales: 0 };
     w.count += 1;

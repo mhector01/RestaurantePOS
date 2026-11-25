@@ -10,6 +10,7 @@ import { PAYMENT_LABEL, formatMoney } from "@/lib/config";
 import { TicketPrint, type TicketPayment } from "@/components/TicketPrint";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { mixedDetail } from "@/lib/payments";
 
 export interface PaymentRow {
   id: number;
@@ -22,6 +23,7 @@ export interface PaymentRow {
   discount: number;
   discountLabel: string | null;
   method: string;
+  cardAmount: number;
   invoiceNumber: string | null;
   invoiceVoid: boolean;
 }
@@ -151,7 +153,7 @@ export function PaymentsList({ rows, truncated }: { rows: PaymentRow[]; truncate
               <div className="text-right shrink-0">
                 <p className="font-semibold tabular">{formatMoney(r.amount)}</p>
                 <p className="text-xs text-muted-foreground">
-                  {PAYMENT_LABEL[r.method] ?? r.method}
+                  {r.method === "MIXED" ? mixedDetail(r, formatMoney) : (PAYMENT_LABEL[r.method] ?? r.method)}
                   {r.tip > 0 && ` · +${formatMoney(r.tip)} propina`}
                 </p>
               </div>
