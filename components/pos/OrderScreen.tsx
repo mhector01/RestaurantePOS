@@ -76,7 +76,9 @@ export async function OrderScreen({ tableId, tableNumber, takeoutOrderId, waiter
   const title = takeout ? `Para llevar #${takeoutOrderId}` : `Mesa ${tableNumber}`;
 
   return (
-    <div className="min-h-dvh flex flex-col">
+    // En tablet / escritorio la pantalla no se desplaza: el menú tiene su propio scroll y la cuenta
+    // queda fija a la derecha, siempre con el botón de cobrar a la vista
+    <div className="min-h-dvh flex flex-col lg:h-dvh lg:overflow-hidden">
       <AutoRefresh seconds={15} />
       <header className="sticky top-0 z-20 h-16 bg-background/85 backdrop-blur border-b">
         <div className="h-full px-3 sm:px-6 flex items-center gap-2 sm:gap-3">

@@ -91,9 +91,8 @@ type OptimisticAction =
   | { type: "inc"; id: number }
   | { type: "dec"; id: number };
 
-// Paleta para distinguir categorías de un vistazo
+// Paleta para distinguir categorías de un vistazo (sin naranja: ese color es el de "en la cuenta")
 const CAT_STYLES = [
-  { bar: "bg-orange-500", soft: "bg-orange-500/15 text-orange-300", ring: "ring-orange-500/40" },
   { bar: "bg-sky-500", soft: "bg-sky-500/15 text-sky-300", ring: "ring-sky-500/40" },
   { bar: "bg-emerald-500", soft: "bg-emerald-500/15 text-emerald-300", ring: "ring-emerald-500/40" },
   { bar: "bg-violet-500", soft: "bg-violet-500/15 text-violet-300", ring: "ring-violet-500/40" },
@@ -101,6 +100,7 @@ const CAT_STYLES = [
   { bar: "bg-amber-400", soft: "bg-amber-400/15 text-amber-200", ring: "ring-amber-400/40" },
   { bar: "bg-teal-400", soft: "bg-teal-400/15 text-teal-200", ring: "ring-teal-400/40" },
   { bar: "bg-fuchsia-500", soft: "bg-fuchsia-500/15 text-fuchsia-300", ring: "ring-fuchsia-500/40" },
+  { bar: "bg-lime-400", soft: "bg-lime-400/15 text-lime-200", ring: "ring-lime-400/40" },
 ];
 type CatStyle = (typeof CAT_STYLES)[number];
 const NEUTRAL: CatStyle = { bar: "bg-ink-500", soft: "bg-ink-500/15 text-ink-300", ring: "ring-ink-500/40" };
@@ -207,6 +207,18 @@ export function OrderWorkspace({
     const inCat = q ? true : category === "all" || p.categoryId === category;
     return inCat && (!q || p.name.toLowerCase().includes(q));
   });
+
+  const withPhotos = useMemo(() => products.some((p) => p.image), [products]);
+
+  // En "Todo" el menú va agrupado por categoría; al filtrar o buscar, una sola lista
+  const groups = useMemo(() => {
+    if (q || category !== "all") return [{ id: -1, name: "", items: filtered }];
+    const known = new Set(categories.map((c) => c.id));
+    return [
+      ...categories.map((c) => ({ id: c.id, name: c.name, items: filtered.filter((p) => p.categoryId === c.id) })),
+      { id: -2, name: "Otros", items: filtered.filter((p) => !known.has(p.categoryId)) },
+    ].filter((g) => g.items.length > 0);
+  }, [q, category, categories, filtered]);
 
   const total = optimisticItems.reduce((s, i) => s + i.price * i.quantity, 0);
   const count = optimisticItems.reduce((s, i) => s + i.quantity, 0);
@@ -465,8 +477,8 @@ export function OrderWorkspace({
       {closed ? closed : (
       <>
       {/* ---------------------------- MENÚ ---------------------------- */}
-      <section className="flex-1 min-w-0 flex flex-col">
-        <div className="sticky top-16 z-10 bg-background/90 backdrop-blur px-4 sm:px-6 pt-4 pb-3 space-y-3 border-b">
+      <section className="flex-1 min-w-0 flex flex-col lg:overflow-y-auto">
+        <div className="sticky top-16 lg:top-0 z-10 bg-background/90 backdrop-blur px-4 sm:px-6 pt-4 pb-3 space-y-3 border-b">
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
             <input
@@ -520,72 +532,39 @@ export function OrderWorkspace({
                 : "No se encontraron productos."}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-              {filtered.map((p) => {
-                const qty = qtyByProduct.get(p.id) ?? 0;
-                const st = styleOf(p.categoryId);
-                return (
-                  <div key={p.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => add(p)}
-                      className={cn(
-                        "w-full text-left rounded-2xl border bg-card overflow-hidden min-h-36 flex flex-col transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 hover:border-primary/40 active:scale-[0.97]",
-                        qty > 0 && "border-primary/70 ring-2 ring-primary/25",
-                        soldOutSet.has(p.id) && qty === 0 && "opacity-60"
-                      )}
-                    >
-                      {p.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.image} alt="" loading="lazy" className="w-full aspect-[4/3] object-cover bg-muted" />
-                      ) : (
-                        <span className={cn("h-1.5 w-full", st.bar)} />
-                      )}
-                      <span className={cn("flex-1 flex flex-col", p.image ? "p-3" : "p-3.5")}>
-                        {!p.image && (
-                          <span className={cn("size-10 rounded-xl grid place-items-center text-sm font-bold", st.soft)}>
-                            {initials(p.name)}
-                          </span>
-                        )}
-                        <span className={cn("font-medium leading-snug line-clamp-2", !p.image && "mt-2.5")}>{p.name}</span>
-                        {soldOutSet.has(p.id) && (
-                          <span className="mt-1 self-start text-[11px] font-semibold rounded-full px-2 py-0.5 bg-red-500/15 text-red-300">
-                            Sin stock
-                          </span>
-                        )}
-                        <span className="mt-auto pt-2 flex items-end justify-between gap-2">
-                          <span className="text-lg font-bold tabular">{formatMoney(p.price)}</span>
-                          <span className="size-9 rounded-full bg-primary text-primary-foreground grid place-items-center shadow-md shadow-primary/30">
-                            <Plus className="size-5" />
-                          </span>
-                        </span>
-                      </span>
-                    </button>
-                    {qty > 0 && (
-                      <>
-                        <span className="pointer-events-none absolute -top-2 -right-2 min-w-7 h-7 px-1.5 rounded-full bg-primary text-primary-foreground text-sm font-bold grid place-items-center shadow-md tabular ring-2 ring-background">
-                          {qty}
-                        </span>
-                        <button
-                          type="button"
-                          aria-label={`Quitar una unidad de ${p.name}`}
-                          onClick={() => decProduct(p.id)}
-                          className="absolute top-3.5 right-3 size-9 rounded-full bg-muted text-muted-foreground grid place-items-center hover:text-destructive hover:bg-destructive/15"
-                        >
-                          <Minus className="size-4" />
-                        </button>
-                      </>
-                    )}
+            <div className="space-y-6">
+              {groups.map((g) => (
+                <section key={g.id} aria-label={g.name || undefined}>
+                  {g.name && (
+                    <h3 className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span className={cn("size-2 rounded-full", styleOf(g.id).bar)} />
+                      {g.name}
+                      <span className="font-normal normal-case tracking-normal">· {g.items.length}</span>
+                    </h3>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 sm:gap-3">
+                    {g.items.map((p) => (
+                      <ProductTile
+                        key={p.id}
+                        product={p}
+                        qty={qtyByProduct.get(p.id) ?? 0}
+                        style={styleOf(p.categoryId)}
+                        soldOut={soldOutSet.has(p.id)}
+                        withPhotos={withPhotos}
+                        onAdd={() => add(p)}
+                        onRemove={() => decProduct(p.id)}
+                      />
+                    ))}
                   </div>
-                );
-              })}
+                </section>
+              ))}
             </div>
           )}
         </div>
       </section>
 
       {/* ------------------- CUENTA (TABLET / ESCRITORIO) ------------------- */}
-      <aside className="hidden lg:flex w-[380px] xl:w-[420px] shrink-0 border-l bg-card sticky top-16 h-[calc(100dvh-4rem)]">
+      <aside className="hidden lg:flex w-[380px] xl:w-[420px] shrink-0 border-l bg-card min-h-0">
         {orderPanel}
       </aside>
 
@@ -619,6 +598,105 @@ export function OrderWorkspace({
       {checkoutDialog}
       {preBill}
       {comboPicker}
+    </div>
+  );
+}
+
+/** Producto del menú: tocarlo lo agrega; si ya está en la cuenta, muestra − cantidad +. */
+function ProductTile({
+  product: p,
+  qty,
+  style: st,
+  soldOut,
+  withPhotos,
+  onAdd,
+  onRemove,
+}: {
+  product: MenuProduct;
+  qty: number;
+  style: CatStyle;
+  soldOut: boolean;
+  /** Algún producto del menú tiene foto. */
+  withPhotos: boolean;
+  onAdd: () => void;
+  onRemove: () => void;
+}) {
+  const inOrder = qty > 0;
+  return (
+    <div
+      className={cn(
+        "relative rounded-2xl border bg-card overflow-hidden transition-colors",
+        inOrder ? "border-primary/70 ring-2 ring-primary/20 bg-primary/[0.06]" : "hover:border-primary/40 hover:bg-muted/40",
+        soldOut && !inOrder && "opacity-60"
+      )}
+    >
+      <button
+        type="button"
+        onClick={onAdd}
+        aria-label={`Agregar ${p.name}`}
+        className="w-full h-full text-left flex flex-col active:scale-[0.98] transition-transform"
+      >
+        {p.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={p.image} alt="" loading="lazy" className="w-full aspect-[16/10] object-cover bg-muted" />
+        ) : (
+          // Si el menú tiene fotos, los productos sin foto llevan un recuadro del mismo tamaño
+          withPhotos && (
+            <span className={cn("w-full aspect-[16/10] grid place-items-center text-3xl font-bold", st.soft)}>
+              {initials(p.name)}
+            </span>
+          )
+        )}
+        <span className="flex-1 flex flex-col gap-2 p-3">
+          <span className="flex items-start gap-2.5 min-h-10">
+            {!p.image && !withPhotos && (
+              <span className={cn("size-10 rounded-xl grid place-items-center text-sm font-bold shrink-0", st.soft)}>
+                {initials(p.name)}
+              </span>
+            )}
+            <span className="min-w-0 flex-1 font-medium leading-snug line-clamp-2 pt-0.5">{p.name}</span>
+          </span>
+          <span className={cn("mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 min-h-8", inOrder ? "pr-[5.25rem]" : "pr-9")}>
+            <span className="font-semibold tabular whitespace-nowrap">{formatMoney(p.price)}</span>
+            {soldOut && (
+              <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-red-500/15 text-red-300 whitespace-nowrap">
+                Sin stock
+              </span>
+            )}
+          </span>
+        </span>
+      </button>
+
+      {/* Control de cantidad (fuera del botón principal: no se pueden anidar botones) */}
+      <div className="absolute bottom-2.5 right-2.5">
+        {inOrder ? (
+          <div className="flex items-center h-8 rounded-full bg-primary text-primary-foreground shadow-md shadow-primary/30">
+            <button
+              type="button"
+              aria-label={`Quitar una unidad de ${p.name}`}
+              onClick={onRemove}
+              className="size-8 grid place-items-center rounded-full hover:bg-black/15"
+            >
+              {qty === 1 ? <Trash2 className="size-4" /> : <Minus className="size-4" />}
+            </button>
+            <span className="min-w-5 text-center text-sm font-bold tabular" aria-label={`${qty} en la cuenta`}>
+              {qty}
+            </span>
+            <button
+              type="button"
+              aria-label={`Agregar otra unidad de ${p.name}`}
+              onClick={onAdd}
+              className="size-8 grid place-items-center rounded-full hover:bg-black/15"
+            >
+              <Plus className="size-4" />
+            </button>
+          </div>
+        ) : (
+          <span className="pointer-events-none size-8 rounded-full bg-muted text-foreground/80 grid place-items-center">
+            <Plus className="size-4" />
+          </span>
+        )}
+      </div>
     </div>
   );
 }

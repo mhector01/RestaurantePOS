@@ -53,9 +53,10 @@ export function OrderNameEditor({ tableId, orderId, name, phone, takeout = false
         )}
       >
         <UserRound className="size-3.5 shrink-0" />
-        <span className="truncate">{name ?? "Agregar nombre"}</span>
+        {/* Sin nombre, en el celular basta el ícono: así cabe el número de mesa */}
+        <span className={cn("truncate", !name && "hidden sm:inline")}>{name ?? "Agregar nombre"}</span>
         {phone && <span className="text-primary/70 hidden sm:inline">· {phone}</span>}
-        <Pencil className="size-3 shrink-0 opacity-70" />
+        <Pencil className={cn("size-3 shrink-0 opacity-70", !name && "hidden sm:block")} />
       </button>
 
       <Dialog open={open} onOpenChange={(v) => !pending && setOpen(v)}>
