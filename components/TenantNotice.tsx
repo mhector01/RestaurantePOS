@@ -1,5 +1,7 @@
 import { Mail, Phone } from "lucide-react";
 import { BrandLogo, SYSTEM } from "@/components/Brand";
+import { BlockedCardPayment } from "@/components/settings/CardPayment";
+import type { CardQuote } from "@/lib/card-checkout";
 
 interface Support {
   instructions: string;
@@ -23,7 +25,16 @@ const TEXT = {
 };
 
 /** Pantalla para una dirección sin restaurante, un restaurante suspendido o con la suscripción vencida. */
-export function TenantNotice({ kind, support }: { kind: keyof typeof TEXT; support?: Support }) {
+export function TenantNotice({
+  kind,
+  support,
+  cardPayment,
+}: {
+  kind: keyof typeof TEXT;
+  support?: Support;
+  /** Solo con la suscripción vencida: el dueño puede pagar con tarjeta desde aquí. */
+  cardPayment?: { planName: string; quotes: CardQuote[] } | null;
+}) {
   const { title, text } = TEXT[kind];
   const showSupport = kind !== "missing" && support && (support.instructions || support.phone || support.email);
   return (
@@ -32,6 +43,7 @@ export function TenantNotice({ kind, support }: { kind: keyof typeof TEXT; suppo
         <BrandLogo className="h-16 mx-auto mb-6" priority />
         <h1 className="text-xl font-semibold">{title}</h1>
         <p className="text-muted-foreground mt-2">{text}</p>
+        {kind === "expired" && cardPayment && <BlockedCardPayment planName={cardPayment.planName} quotes={cardPayment.quotes} />}
         {showSupport && (
           <div className="mt-6 text-left rounded-2xl border bg-muted/30 p-4 space-y-3 text-sm">
             {kind === "expired" && support.instructions && (

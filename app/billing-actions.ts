@@ -4,7 +4,8 @@
 import { revalidatePath } from "next/cache";
 import { rootPrisma } from "@/lib/prisma-base";
 import { requirePlatform } from "@/lib/platform-session";
-import { PAYMENT_METHODS, nextPeriod } from "@/lib/billing";
+import { PAYMENT_METHODS } from "@/lib/billing";
+import { applySubscriptionPayment } from "@/lib/subscription-payments";
 
 type Result = { success: boolean; error?: string };
 const clean = (v: unknown, max = 120) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -141,25 +142,16 @@ export async function registerSubscriptionPayment(id: number, input: PaymentInpu
   if (!PAYMENT_METHODS[input.method]) return { success: false, error: "Forma de pago no válida" };
 
   const to = await rootPrisma.$transaction(async (tx) => {
-    // Bloquea la fila para que dos pagos registrados a la vez no calculen el mismo periodo
-    await tx.$queryRaw`SELECT id FROM "Restaurant" WHERE id = ${id} FOR UPDATE`;
-    const r = await tx.restaurant.findUniqueOrThrow({ where: { id } });
-    const period = nextPeriod(r.paidUntil, months);
-    await tx.subscriptionPayment.create({
-      data: {
-        restaurantId: id,
-        amount,
-        months,
-        method: input.method,
-        reference: clean(input.reference, 80),
-        note: clean(input.note, 300),
-        periodFrom: period.from,
-        periodTo: period.to,
-        recordedBy: me.name,
-      },
-    });
     // Si estaba bloqueado por vencimiento, se desbloquea solo. Una suspensión manual se quita aparte.
-    await tx.restaurant.update({ where: { id }, data: { paidUntil: period.to } });
+    const { period } = await applySubscriptionPayment(tx, {
+      restaurantId: id,
+      amount,
+      months,
+      method: input.method,
+      reference: clean(input.reference, 80),
+      note: clean(input.note, 300),
+      recordedBy: me.name,
+    });
     return period.to;
   });
   refreshRestaurant(id);
