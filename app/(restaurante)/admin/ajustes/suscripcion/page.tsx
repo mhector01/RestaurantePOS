@@ -5,23 +5,39 @@ import { PAYMENT_METHODS, fmtDay } from "@/lib/billing";
 import { formatMoney } from "@/lib/config";
 import { billingLabel } from "@/components/platform/BillingBadge";
 import { cn } from "@/lib/utils";
+import { getAdmin } from "@/lib/session";
+import { currentRestaurantId } from "@/lib/tenant";
+import { canPayByCard, cardQuotes, checkoutResult } from "@/lib/card-checkout";
+import { CardPayment, CardPaymentResult, RefreshWhilePending } from "@/components/settings/CardPayment";
 
 export const dynamic = "force-dynamic";
 
 const short = (d: Date) => d.toLocaleDateString("es-HN", { day: "numeric", month: "short", year: "numeric" });
 
-export default async function SuscripcionPage() {
-  const [{ plan, billing, trial, settings }, payments, waiters, accounts] = await Promise.all([
+export default async function SuscripcionPage({ searchParams }: { searchParams: Promise<{ pago?: string; cobro?: string }> }) {
+  const sp = await searchParams;
+  const [{ plan, billing, trial, settings }, payments, waiters, accounts, me, rid] = await Promise.all([
     getSubscription(),
     prisma.subscriptionPayment.findMany({ orderBy: { createdAt: "desc" }, take: 24 }),
     prisma.user.count(),
     prisma.account.count({ where: { active: true } }),
+    getAdmin(),
+    currentRestaurantId(),
   ]);
   const label = billingLabel(billing, { trial });
   const showPay = billing.state !== "NONE" && (settings.paymentInstructions || settings.supportPhone || settings.supportEmail);
+  // Al volver de Pagadito (?pago=…&cobro=…&estado=…): el mensaje sale de la base, no de ?estado=
+  const cardResult = sp.pago || sp.cobro ? await checkoutResult(rid, { pago: sp.pago, cobro: sp.cobro }) : null;
+  const canCard = !!plan && me?.role === "OWNER" && !me.support && canPayByCard({ status: "ACTIVE", plan });
 
   return (
     <div className="max-w-3xl space-y-5">
+      {cardResult && (
+        <>
+          <CardPaymentResult result={cardResult} />
+          <RefreshWhilePending pending={cardResult.status === "PENDING"} />
+        </>
+      )}
       <section className="rounded-2xl border bg-card p-5">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -71,6 +87,8 @@ export default async function SuscripcionPage() {
           </p>
         )}
       </section>
+
+      {canCard && plan && <CardPayment planName={plan.name} quotes={cardQuotes(plan.price)} />}
 
       {showPay && (
         <section className="rounded-2xl border bg-card p-5 space-y-3">

@@ -64,6 +64,7 @@ model Restaurant {
   supportAccesses      SupportAccess[]
   paymentDiscounts     PaymentDiscount[]
   expenses             Expense[]
+  cardCheckouts        CardCheckout[]
 }
 
 // Nuestras tablas
@@ -605,6 +606,27 @@ model SubscriptionPayment {
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId, createdAt])
+}
+
+// Pago de la suscripción con tarjeta que el dueño inicia desde su panel (Pagadito vía IMZA Pagos, ver
+// lib/imza-pagos.ts). Se crea PENDING al ir a pagar; el aviso firmado de imzaris.com lo pasa a PAID
+// (y en la misma transacción registra el SubscriptionPayment) o a CANCELED / FAILED.
+model CardCheckout {
+  id           String     @id @default(cuid()) // Es la "referencia" que se manda a IMZA Pagos
+  restaurantId Int        @default(dbgenerated("(current_setting('app.restaurant_id'::text, true))::integer"))
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  months       Int
+  amount       Decimal    @db.Decimal(10, 2)
+  currency     String     @default("HNL")
+  status       String     @default("PENDING") // PENDING, PAID, CANCELED, FAILED
+  cobroId      String? // id del cobro en IMZA Pagos (ERN de Pagadito)
+  paymentId    Int? // SubscriptionPayment que se registró al pagarse
+  createdBy    String     @default("") // Correo del dueño que inició el pago
+  createdAt    DateTime   @default(now())
+  paidAt       DateTime?
+
+  @@index([restaurantId, createdAt])
+  @@index([cobroId])
 }
 
 // Una sola fila (id = 1)

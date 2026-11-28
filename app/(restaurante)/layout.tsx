@@ -5,6 +5,8 @@ import { getBusiness, getRestaurant } from "@/lib/tenant";
 import { BusinessProvider } from "@/components/BusinessProvider";
 import { TenantNotice } from "@/components/TenantNotice";
 import { billingOf, getPlatformSettings } from "@/lib/billing";
+import { rootPrisma } from "@/lib/prisma-base";
+import { canPayByCard, cardQuotes } from "@/lib/card-checkout";
 import "../globals.css";
 
 const geistSans = Geist({
@@ -47,6 +49,10 @@ export default async function RootLayout({
       : billingOf(restaurant.paidUntil, settings.graceDays).state === "EXPIRED"
         ? "expired"
         : null;
+  // Vencida: el dueño puede pagar con tarjeta desde la misma pantalla de bloqueo (no se desbloquea nada más).
+  const plan = blocked === "expired" && restaurant?.planId ? await rootPrisma.plan.findUnique({ where: { id: restaurant.planId } }) : null;
+  const cardPayment =
+    restaurant && plan && canPayByCard({ status: restaurant.status, plan }) ? { planName: plan.name, quotes: cardQuotes(plan.price) } : null;
   return (
     <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
@@ -58,6 +64,7 @@ export default async function RootLayout({
               phone: settings.supportPhone,
               email: settings.supportEmail,
             }}
+            cardPayment={cardPayment}
           />
         ) : (
           <BusinessProvider value={business}>{children}</BusinessProvider>

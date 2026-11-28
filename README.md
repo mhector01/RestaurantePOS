@@ -100,6 +100,8 @@ Abre http://localhost:3000. En desarrollo, si no defines `ADMIN_PASSWORD`, la cl
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Para fotos en S3 | Clave con permiso solo sobre ese bucket (no uses la de administrador). |
 | `S3_REGION` / `S3_PREFIX` | No | Región (por defecto `us-east-1`; en R2 `auto`) y carpeta dentro del bucket, si se comparte. |
 | `UPLOAD_DIR` | Si no hay S3 | Carpeta de las fotos en disco. El Dockerfile la define en `/app/uploads`; en Coolify móntale un volumen persistente. En desarrollo usa `./uploads`. |
+| `IMZA_PAGOS_URL` | Para pago con tarjeta | Dirección de IMZA Pagos, p. ej. `https://imzaris.com`. Con esta y la siguiente, el dueño puede pagar su suscripción con tarjeta (1, 3, 6 o 12 meses) en *Ajustes → Suscripción* o desde la pantalla de suscripción vencida. |
+| `IMZA_PAGOS_SECRETO` | Para pago con tarjeta | Secreto compartido con imzaris.com (`PRODUCTO_RISTEMO_SECRETO` allá). Allá también van `PRODUCTO_RISTEMO_ORIGENES` (los subdominios de los restaurantes) y `PRODUCTO_RISTEMO_WEBHOOK=https://<dominio principal>/api/imza-pagos/webhook` (el aviso solo responde en el dominio principal). Descuentos por meses: `CARD_DISCOUNTS` en `lib/card-checkout.ts`. |
 | `TZ` | No | Zona horaria para "ventas de hoy" y horas del ticket. Por defecto `America/Tegucigalpa`. |
 | `NEXT_PUBLIC_BUSINESS_NAME` | No | Nombre del negocio (ticket y título) si el restaurante no tiene uno propio. **Build variable.** |
 | `NEXT_PUBLIC_BUSINESS_ADDRESS` | No | Dirección en el ticket si el restaurante no tiene una propia. **Build variable.** |
